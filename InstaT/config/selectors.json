@@ -1,0 +1,13 @@
+{
+    "FOLLOWERS_LINK": "//a[contains(@href, '/followers/')]",
+    "FOLLOWING_LINK": "//a[contains(@href, '/following/')]",
+    "PROFILE_USERNAME_SPAN": "span._ap3a._aaco._aacw._aacx._aad7._aade",
+    "CLOSE_MODAL_BUTTON": "//button[@type='button' and contains(@class, '_abl- _abm2')]",
+    "LOGIN_USERNAME_INPUT": "input[name='username']",
+    "LOGIN_PASSWORD_INPUT": "input[name='password']",
+    "LOGIN_BUTTON_CANDIDATE": "//div[@role='button' and @tabindex='0' and contains(@class, 'wbloks_1')]",
+    "IGNORE_BUTTON": "//div[@role='button' and @aria-label='Ignorar']",
+    "LOADING_SPINNER": "//div[@aria-label='Carregando...']",
+    "SAVE_LOGIN_INFO_BUTTON": "//div[@role='button']",
+    "SAVE_LOGIN_INFO_DIALOG": "//div[@role='dialog']"
+}
