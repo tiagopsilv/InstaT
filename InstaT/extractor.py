@@ -149,10 +149,9 @@ class InstaExtractor:
 
         return total
 
-    def _open_list_modal(self, profile_id: str, list_type: str) -> Optional[int]:
+    def _navigate_and_get_link(self, profile_id: str, list_type: str):
         """
-        Navigate to the profile page and click on the followers/following link.
-        Returns the total count if successful, or None on failure.
+        Navega até o perfil e retorna o elemento do link (seguidores ou seguindo).
         """
         url = f"https://www.instagram.com/{profile_id}/"
         logger.info("Navigating to profile: {}", url)
@@ -173,29 +172,57 @@ class InstaExtractor:
 
         try:
             link = WebDriverWait(self.driver, self.timeout).until(
-                EC.element_to_be_clickable((By.XPATH, xpath))
+                EC.presence_of_element_located((By.XPATH, xpath))
             )
-            # join number + suffix if split
+            return link
+        except (TimeoutException, WebDriverException) as e:
+            logger.exception("Error locating {} link: {}", list_type, e)
+            return None
+        
+    def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
+        """
+        Obtém o número total de seguidores ou seguindo.
+        """
+        link = self._navigate_and_get_link(profile_id, list_type)
+        if not link:
+            return None
+
+        try:
             parts = link.text.split()
             raw = parts[0]
-            if len(parts) > 1 and parts[1].lower() in ("k","m","mi","mil"):
+            if len(parts) > 1 and parts[1].lower() in ("k", "m", "mi", "mil"):
                 raw += parts[1]
             total_count = self.parse_count_text(raw)
             logger.debug("Parsed total {}: {}", list_type, total_count)
+            return total_count
+        except ValueError as e:
+            logger.exception("Error parsing {} count: {}", list_type, e)
+            return None
+
+    def _click_list_link(self, profile_id: str, list_type: str) -> bool:
+        """
+        Clica no link de seguidores ou seguindo.
+        """
+        link = self._navigate_and_get_link(profile_id, list_type)
+        if not link:
+            return False
+
+        try:
+            WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable(link))
             link.click()
             logger.debug("Clicked on the {} link.", list_type)
-            return total_count
+            return True
+        except (TimeoutException, WebDriverException) as e:
+            logger.exception("Error clicking {} link: {}", list_type, e)
+            return False
 
-        except (TimeoutException, WebDriverException, ValueError) as e:
-            logger.exception("Error opening {} list modal: {}", list_type, e)
-            return None
         
     def _extract_list(self, profile_id: str, list_type: str, max_duration: Optional[float]) -> List[str]:
         """
         Extracts followers or following by opening the modal and then calling get_profiles.
         """
-        total_count = self._open_list_modal(profile_id, list_type)
-        if total_count is None:
+        total_count = self.get_total_count(profile_id, list_type)
+        if total_count is None or not self._click_list_link(profile_id, list_type):
             return []
 
         usernames = self.get_profiles(total_count, max_duration)

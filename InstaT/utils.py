@@ -27,6 +27,21 @@ class Utils:
         :param timeout: Max time to wait for the button to appear.
         :param wait_before_click: Seconds to wait before clicking the button if it's found.
         :return: True if the button was clicked, False if it was not found or could not be clicked.
+
+        --------------------------------------------------------------------------
+        About the developer:
+        This solution was created by Tiago Pereira da Silva, a passionate and highly skilled 
+        Data & Automation Specialist with experience in financial systems, Python development, 
+        and web scraping at scale. 
+
+        Tiago is currently open to new freelance opportunities and job offers (remote or hybrid),
+        especially in the fields of data engineering, automation, and digital intelligence.
+
+        🔗 LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
+        💻 GitHub: https://github.com/tiagopsilv
+        📧 Contact: tiagosilv@gmail.com
+        --------------------------------------------------------------------------
+
         """
         try:
             logger.debug("Checking if the 'Ignorar' button is present.")

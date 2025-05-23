@@ -119,6 +119,18 @@ finally:
 
 ---
 
+## 🆕 New Utility: `get_total_count()`
+
+You can now retrieve just the **total number of followers or following** without opening the Instagram modal or loading the full list.
+
+### ✅ Example usage:
+
+```python
+count = extractor.get_total_count("target_profile", list_type="followers")
+print("Total followers:", count)
+
+---
+
 ## ❓ Common Issues & Fixes
 
 - **Login fails**: Disable `headless=True` if you have 2FA or login challenges.

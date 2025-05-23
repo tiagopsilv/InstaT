@@ -1,3 +1,17 @@
-selenium
-webdriver_manager
-pandas
+# Selenium is used for browser automation and interaction with Instagram
+selenium>=4.10.0,<5.0.0
+
+# WebDriver Manager automatically installs the correct browser driver (e.g., GeckoDriver)
+webdriver-manager>=4.0.1
+
+# Loguru simplifies logging with advanced formatting and rotation
+loguru>=0.7.2
+
+# Pytest is recommended for test automation
+pytest>=8.0.0
+
+# typing-extensions for better type hinting and future compatibility (if needed)
+typing-extensions>=4.10.0
+
+# setuptools for packaging and running setup.py
+setuptools>=69.0.0
