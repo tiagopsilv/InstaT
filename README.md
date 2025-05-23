@@ -128,6 +128,7 @@ You can now retrieve just the **total number of followers or following** without
 ```python
 count = extractor.get_total_count("target_profile", list_type="followers")
 print("Total followers:", count)
+```
 
 ---
 
