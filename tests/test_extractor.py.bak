@@ -7,12 +7,12 @@ from loguru import logger
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from instat.extractor import InstaExtractor
+from InstaT.extractor import InstaExtractor
 
 # Configure Loguru for detailed test logging
 logger.remove()
 logger.add(sys.stderr, level="DEBUG", colorize=True, format="<green>{time}</green> | <level>{message}</level>")
-logger.add("instat/logs/test_insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", diagnose=True)
+logger.add("InstaT/logs/test_insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", diagnose=True)
 
 class TestInstaExtractor(unittest.TestCase):
     """
@@ -43,7 +43,7 @@ class TestInstaExtractor(unittest.TestCase):
         cls.profile_id = "tiagopsilv"
 
         # Mock InstaLogin to avoid real Instagram login
-        with patch('instat.extractor.InstaLogin') as MockLogin:
+        with patch('InstaT.extractor.InstaLogin') as MockLogin:
             cls.mock_login_instance = MockLogin.return_value
             cls.mock_login_instance.driver = MagicMock()
             cls.extractor = InstaExtractor(cls.username, cls.valid_password, headless=True)
@@ -84,27 +84,27 @@ class TestInstaExtractor(unittest.TestCase):
                 with self.assertRaises((ValueError, AttributeError)):
                     self.extractor.parse_count_text(input_text)
 
-    @patch('instat.extractor.InstaExtractor._open_list_modal', return_value=10)
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=['user1', 'user2'])
+    @patch('InstaT.extractor.InstaExtractor._open_list_modal', return_value=10)
+    @patch('InstaT.extractor.InstaExtractor.get_profiles', return_value=['user1', 'user2'])
     def test_get_followers_mocked(self, mock_get_profiles, mock_open_modal):
         followers = self.extractor.get_followers(self.profile_id)
         self.assertEqual(followers, ['user1', 'user2'])
         mock_open_modal.assert_called_once_with(self.profile_id, 'followers')
         mock_get_profiles.assert_called_once()
 
-    @patch('instat.extractor.InstaExtractor._open_list_modal', return_value=None)
+    @patch('InstaT.extractor.InstaExtractor._open_list_modal', return_value=None)
     def test_get_followers_modal_failure(self, mock_open_modal):
         followers = self.extractor.get_followers(self.profile_id)
         self.assertEqual(followers, [], "Expected empty list when modal fails to open.")
 
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=[])
+    @patch('InstaT.extractor.InstaExtractor.get_profiles', return_value=[])
     def test_max_duration_enforcement(self, mock_get_profiles):
         start_time = time.perf_counter()
         result = self.extractor.get_profiles(100, max_duration=1)
         duration = time.perf_counter() - start_time
         self.assertLessEqual(duration, 1.5, "Duration exceeded max_duration significantly.")
 
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=[])
+    @patch('InstaT.extractor.InstaExtractor.get_profiles', return_value=[])
     def test_handle_invalid_profile(self, mock_get_profiles):
         result = self.extractor.get_followers("invalid_profile")
         self.assertEqual(result, [], "Expected empty list for invalid profile.")

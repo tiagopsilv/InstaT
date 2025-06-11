@@ -1,0 +1,10 @@
+MANIFEST.in
+pyproject.toml
+InstaT.egg-info/PKG-INFO
+InstaT.egg-info/SOURCES.txt
+InstaT.egg-info/dependency_links.txt
+InstaT.egg-info/not-zip-safe
+InstaT.egg-info/requires.txt
+InstaT.egg-info/top_level.txt
+config/__init__.py
+config/selector_loader.py

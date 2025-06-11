@@ -1,16 +1,14 @@
-# Built-in
 import sys
 import time
-import os
-import re
 from typing import List, Optional
-
-# Third-party
 from loguru import logger
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import StaleElementReferenceException
+import re
+import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -29,23 +27,22 @@ logger.add(
 )
 logger.add("InstaT/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=True)
 
-# Local project modules
+# Import InstaLogin (adjust the import according to your project structure)
 try:
-    from instat.login import InstaLogin
-    from instat.config.selector_loader import SelectorLoader
+    from InstaT.login import InstaLogin
+    from InstaT.config.selector_loader import SelectorLoader
 except ImportError:
     from login import InstaLogin
     from config.selector_loader import SelectorLoader
-try:
-    from instat.utils import Utils
-except ImportError:
-    from utils import Utils
-try:
-    from instat.exceptions import LoginError, ProfileNotFoundError
-except ImportError:
-    from exceptions import LoginError, ProfileNotFoundError
 
 selectors = SelectorLoader()
+
+# Import our generic scrolling utility
+try:
+    from InstaT.utils import Utils
+except ImportError:
+    from utils import Utils
+
 
 class InstaExtractor:
     """
@@ -116,7 +113,7 @@ class InstaExtractor:
             logger.info("Logged in successfully as {}", username)
         except Exception as e:
             logger.exception("Login failed during InstaExtractor initialization: {}", e)
-            raise LoginError(f"Failed to login as {username}") from e
+            raise
 
     @staticmethod
     def parse_count_text(text: str) -> int:
@@ -180,7 +177,7 @@ class InstaExtractor:
             return link
         except (TimeoutException, WebDriverException) as e:
             logger.exception("Error locating {} link: {}", list_type, e)
-            raise ProfileNotFoundError(f"Could not find {list_type} link for '{profile_id}'") from e
+            return None
         
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "build", "twine"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "instat"
+version = "1.0.0"
+description = "A robust Instagram data extractor using Selenium with automated login, scrolling, and profile capture."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Tiago Pereira da Silva", email = "tiagosilv@gmail.com" }
+]
+license = { text = "MIT" }
+keywords = ["instagram", "scraping", "automation", "selenium", "social network", "influencer marketing"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Framework :: Pytest",
+    "Environment :: Console"
+]
+dependencies = [
+    "selenium>=4.12.0",
+    "loguru>=0.7.0",
+    "webdriver-manager>=4.0.1",
+    "pytest>=7.0.0"
+]
+
+[project.urls]
+Homepage = "https://www.linkedin.com/in/tiagopsilvatec/"
+GitHub = "https://github.com/tiagopsilv"
+LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"InstaT.config" = ["selectors.json"]
+
+[tool.twine]
+# Twine settings for secure upload (optional if ~/.pypirc is configured)
+username = "__token__"
+password = ""  # Set via TWINE_PASSWORD env var
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+# Author's note:
+# Tiago Pereira da Silva is a Data Science & Analytics Specialist with strong experience in building automated pipelines,
+# financial systems, and intelligent data-driven applications. Open to freelance and remote opportunities worldwide.
+# Contact: tiagosilv@gmail.com | LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["tests"]

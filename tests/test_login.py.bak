@@ -7,7 +7,7 @@ import os
 # Ensure the root directory is in the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from instat.login import InstaLogin
+from InstaT.login import InstaLogin
 
 
 class TestInstaLogin(unittest.TestCase):
@@ -53,11 +53,11 @@ class TestInstaLogin(unittest.TestCase):
         self.login_url = self.__class__.login_url
 
         # Patch Firefox WebDriver and SelectorLoader
-        self.driver_patcher = patch("instat.login.webdriver.Firefox")
+        self.driver_patcher = patch("InstaT.login.webdriver.Firefox")
         self.mock_driver = self.driver_patcher.start().return_value
         self.mock_driver.current_url = self.login_url
 
-        selector_loader_patcher = patch("instat.login.SelectorLoader")
+        selector_loader_patcher = patch("InstaT.login.SelectorLoader")
         mock_loader_class = selector_loader_patcher.start()
         self.addCleanup(selector_loader_patcher.stop)
         mock_loader_instance = MagicMock()
@@ -77,7 +77,7 @@ class TestInstaLogin(unittest.TestCase):
         except Exception:
             pass
 
-    @patch("instat.login.WebDriverWait")
+    @patch("InstaT.login.WebDriverWait")
     def test_timeout_wait_for_form_fields(self, mock_wait):
         """
         Should raise an exception when login form fields do not appear.
@@ -89,7 +89,7 @@ class TestInstaLogin(unittest.TestCase):
 
         self.assertIn("Timeout waiting for login form elements", str(context.exception))
 
-    @patch("instat.login.WebDriverWait")
+    @patch("InstaT.login.WebDriverWait")
     def test_successful_login(self, mock_wait):
         """
         Should return True when login completes successfully.
@@ -104,7 +104,7 @@ class TestInstaLogin(unittest.TestCase):
         username_mock.send_keys.assert_any_call(self.username)
         password_mock.send_keys.assert_any_call(self.correct_password)
 
-    @patch("instat.login.WebDriverWait")
+    @patch("InstaT.login.WebDriverWait")
     def test_invalid_credentials(self, mock_wait):
         """
         Should raise an exception for incorrect credentials.
@@ -120,7 +120,7 @@ class TestInstaLogin(unittest.TestCase):
 
         self.assertIn("login", str(context.exception).lower())
 
-    @patch("instat.login.WebDriverWait")
+    @patch("InstaT.login.WebDriverWait")
     def test_fallback_button_click(self, mock_wait):
         # Simulate fallback login button click when RETURN key doesn't work
         mock_driver = MagicMock()

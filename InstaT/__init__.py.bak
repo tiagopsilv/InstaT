@@ -7,16 +7,13 @@ Provides:
 - utils: helper functions for WebDriver operations
 """
 
-from .extractor import InstaExtractor
+from .extractor import InstaExtractor, LoginError, ProfileNotFoundError, RateLimitError
 from .login import InstaLogin
-from .exceptions import LoginError, ProfileNotFoundError, RateLimitError
+from .extractor import InstaExtractor
 from . import utils
 
 __all__ = [
     "InstaLogin",
     "InstaExtractor",
-    "LoginError",
-    "ProfileNotFoundError",
-    "RateLimitError",
     "utils"
 ]

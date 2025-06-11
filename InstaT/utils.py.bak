@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load selector loader
 try:
-    from instat.config.selector_loader import SelectorLoader
+    from InstaT.config.selector_loader import SelectorLoader
 except ImportError:
     from config.selector_loader import SelectorLoader
 

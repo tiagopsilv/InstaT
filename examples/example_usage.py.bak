@@ -43,7 +43,7 @@
     --------------------------------------------------------------------------
 """
 
-from instat.extractor import InstaExtractor
+from InstaT.extractor import InstaExtractor
 
 # === BASIC USAGE ===
 # Login and extract both followers and following from a target profile

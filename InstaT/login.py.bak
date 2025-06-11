@@ -28,12 +28,12 @@ logger.add(
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 )
-logger.add("instat/logs/insta_login.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=True)
+logger.add("InstaT/logs/insta_login.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=True)
 
 # Import our generic utility
 try:
-    from instat.utils import Utils
-    from instat.config.selector_loader import SelectorLoader
+    from InstaT.utils import Utils
+    from InstaT.config.selector_loader import SelectorLoader
 except ImportError:
     from utils import Utils
     from config.selector_loader import SelectorLoader
