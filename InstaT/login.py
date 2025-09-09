@@ -16,6 +16,9 @@ from selenium.common.exceptions import (
 from selenium.common.exceptions import StaleElementReferenceException
 import time
 import os
+import re
+from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -38,10 +41,24 @@ except ImportError:
     from utils import Utils
     from config.selector_loader import SelectorLoader
 
+class MetaInterstitialError(Exception):
+    """Raised when a Meta interstitial (e.g., Meta Verified / checkpoint) blocks the login process."""
+    def __init__(self, message, *, url, page_title, evidence_path=None, screenshot_path=None):
+        super().__init__(message)
+        self.url = url
+        self.page_title = page_title
+        self.evidence_path = evidence_path
+        self.screenshot_path = screenshot_path
 
 class InstaLogin:
     # Public list of keywords used to identify the login button in any language
     keywords = ["entrar", "log in", "login", "iniciar sesión", "connexion", "anmelden"]
+
+    # Signatures used to detect Meta interstitials
+    META_VERIFIED_SIGNATURES = [
+        "o meta verified está disponível para o facebook e o instagram",  # Portuguese string from provided HTML
+        "meta verified",
+    ]
 
     def __init__(self, username, password, headless=True, timeout=10):
         self.username = username
@@ -78,6 +95,62 @@ class InstaLogin:
         except WebDriverException as e:
             logger.exception("Error executing script to remove webdriver flag")
         return driver
+
+    def _check_for_meta_interstitial(self):
+        """Check if a Meta interstitial (Meta Verified, checkpoint, etc.) appeared after login."""
+        driver = self.driver
+        page_title = (driver.title or "").strip()
+        current_url = driver.current_url
+        html = driver.page_source or ""
+        html_lc = html.casefold()
+
+        matched = None
+        for sig in self.META_VERIFIED_SIGNATURES:
+            if sig in html_lc:
+                matched = sig
+                break
+
+        looks_like_fb_title = page_title.casefold().startswith("facebook")
+
+        if matched:
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            artifacts_dir = Path("instat/logs/artifacts")
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+            evidence_path = artifacts_dir / f"meta_interstitial_{ts}.html"
+            screenshot_path = artifacts_dir / f"meta_interstitial_{ts}.png"
+
+            try:
+                with open(evidence_path, "w", encoding="utf-8") as f:
+                    f.write(html)
+            except Exception as e:
+                logger.warning(f"Failed to save page source: {e}")
+
+            try:
+                driver.save_screenshot(str(screenshot_path))
+            except Exception as e:
+                logger.warning(f"Failed to save screenshot: {e}")
+
+            # 🔴 Log now clearly says manual email verification is required
+            logger.error(
+                "Meta/Instagram interstitial detected after login.\n"
+                f"- URL: {current_url}\n"
+                f"- Title: {page_title}\n"
+                f"- Matched signature: '{matched}'\n"
+                f"- Title looks like Facebook? {looks_like_fb_title}\n"
+                f"- Page source: {evidence_path}\n"
+                f"- Screenshot: {screenshot_path}\n"
+                "⚠️ Action required: Check the registered e-mail for verification instructions.\n"
+            )
+
+            raise MetaInterstitialError(
+                "Login blocked by Meta/Instagram interstitial. "
+                "Manual action required: verify the account through the registered e-mail.",
+                url=current_url,
+                page_title=page_title,
+                evidence_path=str(evidence_path),
+                screenshot_path=str(screenshot_path),
+            )
 
     def login(self):
         driver = self.driver
@@ -152,6 +225,8 @@ class InstaLogin:
 
         # Handle "Save your login info?" modal using utility method
         Utils.dismiss_save_login_modal(driver, self.close_keywords, self.timeout)
+
+        self._check_for_meta_interstitial()
 
         logger.info("Login successful!")
         return True
