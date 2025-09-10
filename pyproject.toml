@@ -43,7 +43,7 @@ LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["InstaT"]
+include = ["InstaT", "InstaT.*"]
 
 [tool.setuptools.package-dir]
 instat = "InstaT"
