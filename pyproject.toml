@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "instat"
-version = "1.0.1"
+version = "1.0.2"
 description = "A robust Instagram data extractor using Selenium with automated login, scrolling, and profile capture."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -38,24 +38,17 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://www.linkedin.com/in/tiagopsilvatec/"
-GitHub = "https://github.com/tiagopsilv"
+GitHub = "https://github.com/tiagopsilv/InstaT"
 LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
 
-# Agora descobrimos e instalamos o pacote como 'instat' (e subpacotes)
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["instat", "instat.*"]
-
-# Não precisamos mais mapear 'instat' -> 'InstaT'
-# [tool.setuptools.package-dir]  # removido
-
-# Inclui dados do subpacote config
-[tool.setuptools.package-data]
-"instat.config" = ["selectors.json"]
-
 [tool.setuptools]
+packages = ["instat", "instat.config"]
+package-dir = { "instat" = "InstaT", "instat.config" = "InstaT/config" }
 include-package-data = true
 zip-safe = false
+
+[tool.setuptools.package-data]
+"instat.config" = ["selectors.json"]
 
 [tool.twine]
 username = "__token__"
