@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "instat"
-version = "1.0.0"
+version = "1.0.1"
 description = "A robust Instagram data extractor using Selenium with automated login, scrolling, and profile capture."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -41,24 +41,25 @@ Homepage = "https://www.linkedin.com/in/tiagopsilvatec/"
 GitHub = "https://github.com/tiagopsilv"
 LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
 
+# Agora descobrimos e instalamos o pacote como 'instat' (e subpacotes)
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["InstaT", "InstaT.*"]
+include = ["instat", "instat.*"]
 
-[tool.setuptools.package-dir]
-instat = "InstaT"
+# Não precisamos mais mapear 'instat' -> 'InstaT'
+# [tool.setuptools.package-dir]  # removido
 
+# Inclui dados do subpacote config
 [tool.setuptools.package-data]
-"InstaT.config" = ["selectors.json"]
-
-[tool.twine]
-# Twine settings for secure upload (optional if ~/.pypirc is configured)
-username = "__token__"
-password = ""  # Set via TWINE_PASSWORD env var
+"instat.config" = ["selectors.json"]
 
 [tool.setuptools]
 include-package-data = true
 zip-safe = false
+
+[tool.twine]
+username = "__token__"
+password = ""  # defina via TWINE_PASSWORD
 
 [tool.pytest.ini_options]
 minversion = "7.0"
