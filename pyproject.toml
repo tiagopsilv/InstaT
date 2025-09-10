@@ -43,6 +43,10 @@ LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["InstaT"]
+
+[tool.setuptools.package-dir]
+instat = "InstaT"
 
 [tool.setuptools.package-data]
 "InstaT.config" = ["selectors.json"]
@@ -56,12 +60,12 @@ password = ""  # Set via TWINE_PASSWORD env var
 include-package-data = true
 zip-safe = false
 
-# Author's note:
-# Tiago Pereira da Silva is a Data Science & Analytics Specialist with strong experience in building automated pipelines,
-# financial systems, and intelligent data-driven applications. Open to freelance and remote opportunities worldwide.
-# Contact: tiagosilv@gmail.com | LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
-
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
+
+# Author's note:
+# Tiago Pereira da Silva is a Data Science & Analytics Specialist with strong experience in building automated pipelines,
+# financial systems, and intelligent data-driven applications. Open to freelance and remote opportunities worldwide.
+# Contact: tiagosilv@gmail.com | LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
