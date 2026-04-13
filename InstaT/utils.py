@@ -6,17 +6,44 @@ from loguru import logger
 from typing import Set, List
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 # Load selector loader
 try:
     from instat.config.selector_loader import SelectorLoader
 except ImportError:
     from config.selector_loader import SelectorLoader
 
+try:
+    from instat.constants import human_delay, ELEMENT_RETRY_DELAY
+except ImportError:
+    from constants import human_delay, ELEMENT_RETRY_DELAY
+
 class Utils:
     selectors = SelectorLoader()
+
+    @staticmethod
+    def find_element_with_fallback(driver, selectors_list, by_auto=True, timeout=5):
+        """
+        Tenta encontrar um elemento usando uma lista de seletores alternativos.
+        Detecta automaticamente se é XPath (começa com //) ou CSS.
+        Retorna o primeiro elemento encontrado ou None.
+        """
+        for selector in selectors_list:
+            try:
+                by = By.XPATH if selector.startswith('//') else By.CSS_SELECTOR
+                element = WebDriverWait(driver, timeout).until(
+                    EC.presence_of_element_located((by, selector))
+                )
+                if element:
+                    logger.debug(f"Element found with selector: {selector[:60]}")
+                    return element
+            except (TimeoutException, NoSuchElementException):
+                logger.debug(f"Selector not found, trying next: {selector[:60]}")
+                continue
+            except Exception as e:
+                logger.debug(f"Error with selector {selector[:60]}: {e}")
+                continue
+        logger.warning(f"No element found with any of {len(selectors_list)} selector alternatives.")
+        return None
 
     @staticmethod
     def click_ignore_button_if_present(driver, timeout=5, wait_before_click=3):
@@ -28,20 +55,6 @@ class Utils:
         :param wait_before_click: Seconds to wait before clicking the button if it's found.
         :return: True if the button was clicked, False if it was not found or could not be clicked.
 
-        --------------------------------------------------------------------------
-        About the developer:
-        This solution was created by Tiago Pereira da Silva, a passionate and highly skilled 
-        Data & Automation Specialist with experience in financial systems, Python development, 
-        and web scraping at scale. 
-
-        Tiago is currently open to new freelance opportunities and job offers (remote or hybrid),
-        especially in the fields of data engineering, automation, and digital intelligence.
-
-        🔗 LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
-        💻 GitHub: https://github.com/tiagopsilv
-        📧 Contact: tiagosilv@gmail.com
-        --------------------------------------------------------------------------
-
         """
         try:
             logger.debug("Checking if the 'Ignorar' button is present.")
@@ -51,7 +64,7 @@ class Utils:
             
             if ignore_button:
                 logger.info(f"'Ignorar' button detected. Waiting for {wait_before_click} seconds before clicking.")
-                time.sleep(wait_before_click)  # Waiting before clicking
+                human_delay(wait_before_click)  # Waiting before clicking
                 
                 ignore_button.click()
                 logger.info("Successfully clicked the 'Ignorar' button.")
@@ -78,7 +91,7 @@ class Utils:
                 return element
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 logger.warning(f"Attempt {attempt + 1}/{max_retries}: Error finding element - {e}")
-                time.sleep(1)
+                human_delay(ELEMENT_RETRY_DELAY)
         logger.error("Failed to find element after multiple attempts.")
         return None
     
@@ -91,19 +104,28 @@ class Utils:
                     return elements
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 logger.warning(f"Attempt {attempt + 1}/{max_retries}: {e}")
-            time.sleep(wait_time)
+            human_delay(wait_time)
         return []
 
     @staticmethod
     def dynamic_scroll_element(driver: WebDriver, element, item_selector: str, pause_time: float = 0.5, max_attempts: int = 2):
         attempts = 0
+        try:
+            is_body = element.tag_name.lower() == 'body'
+        except Exception:
+            is_body = False
 
         while attempts < max_attempts:
             try:
                 items = Utils.find_elements_safe(driver, By.CSS_SELECTOR, item_selector)
                 if items:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", items[-1])
-                time.sleep(pause_time)
+                    if is_body:
+                        driver.execute_script("arguments[0].scrollIntoView(true);", items[-1])
+                    else:
+                        driver.execute_script(
+                            'arguments[0].scrollTop = arguments[0].scrollHeight', element
+                        )
+                human_delay(pause_time)
                 attempts += 1
 
             except Exception as e:
@@ -164,7 +186,7 @@ class Utils:
                 )
 
                 # Small wait before next round
-                time.sleep(wait_interval)
+                human_delay(wait_interval)
 
                 # No update, break out
                 profile_elements_after_scroll = Utils.find_elements_safe(
@@ -185,54 +207,58 @@ class Utils:
         logger.debug(f"No profiles found during loop. Performing final scrolling ({additional_scroll_attempts} attempts).")
         
     @staticmethod
-    def parallel_find_elements(driver: WebDriver, by: str, value: str, retries: int = 2) -> List:
-        """
-        Uses ThreadPoolExecutor to parallelize element finding, making it faster.
-        """
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(driver.find_elements, by, value): attempt for attempt in range(retries)}
-            results = []
-
-            for future in as_completed(futures):
-                try:
-                    elements = future.result()
-                    if elements:
-                        results.extend(elements)
-                except Exception as e:
-                    logger.warning(f"Error during parallel element finding: {e}")
-        return results
-    
-    @staticmethod
     def dismiss_save_login_modal(driver: WebDriver, close_keywords: List[str], timeout: int = 6) -> bool:
         """
-        Dismisses the 'Save your login info?' modal by clicking a known button and waiting for the modal to disappear.
-
-        :param driver: WebDriver instance.
-        :param close_keywords: List of possible keywords for dismiss buttons.
-        :param timeout: Max time to wait for the modal to close.
-        :return: True if modal was dismissed, False otherwise.
+        Dismisses the 'Save your login info?' modal.
+        Strategy: try targeted selectors first (Not now, Close), then generic ones.
         """
         logger.debug("Checking for 'Save login info' modal.")
-        try:
-            WebDriverWait(driver, timeout).until(lambda d: len(d.find_elements(By.XPATH, Utils.selectors.get("SAVE_LOGIN_INFO_BUTTON"))) > 0)
-            all_buttons = driver.find_elements(By.XPATH, Utils.selectors.get("SAVE_LOGIN_INFO_BUTTON"))
-            for button in all_buttons:
-                try:
-                    text = button.text.strip().lower()
-                    if any(keyword in text for keyword in close_keywords):
-                        logger.debug(f"Found dismiss button with text: '{text}'. Clicking...")
-                        button.click()
-                        
-                        # After clicking, wait until the modal disappears
-                        WebDriverWait(driver, timeout).until(
-                            lambda d: not d.find_elements(By.XPATH, Utils.selectors.get("SAVE_LOGIN_INFO_DIALOG"))
-                        )
-                        
-                        logger.debug("Modal 'Save login info' successfully dismissed.")
-                        return True
-                except Exception as e:
-                    logger.warning(f"Error trying to click dismiss button: {e}")
-                    continue
-        except Exception as e:
-            logger.warning(f"Could not detect or close 'Save login info' modal: {e}")
+        button_selectors = Utils.selectors.get_all("SAVE_LOGIN_INFO_BUTTON")
+
+        # Fase 1: seletores específicos (primeiros da lista) — clique direto, sem filtro de texto
+        for selector in button_selectors[:2]:
+            by = By.XPATH if selector.startswith('//') else By.CSS_SELECTOR
+            try:
+                WebDriverWait(driver, timeout).until(
+                    lambda d, s=selector, b=by: len(d.find_elements(b, s)) > 0
+                )
+                elements = driver.find_elements(by, selector)
+                if elements:
+                    logger.debug(f"Found targeted dismiss element with selector: {selector[:60]}. Clicking...")
+                    try:
+                        elements[0].click()
+                    except Exception:
+                        driver.execute_script("arguments[0].click();", elements[0])
+                    human_delay(1.0)
+                    logger.debug("Modal 'Save login info' dismissed via targeted selector.")
+                    return True
+            except TimeoutException:
+                continue
+            except Exception as e:
+                logger.debug(f"Targeted selector failed: {e}")
+                continue
+
+        # Fase 2: seletores genéricos — filtro por keyword no texto
+        for selector in button_selectors[2:]:
+            by = By.XPATH if selector.startswith('//') else By.CSS_SELECTOR
+            try:
+                all_buttons = driver.find_elements(by, selector)
+                for button in all_buttons:
+                    try:
+                        text = button.text.strip().lower()
+                        if any(keyword in text for keyword in close_keywords):
+                            logger.debug(f"Found dismiss button with text: '{text}'. Clicking...")
+                            try:
+                                button.click()
+                            except Exception:
+                                driver.execute_script("arguments[0].click();", button)
+                            human_delay(1.0)
+                            logger.debug("Modal 'Save login info' dismissed via keyword match.")
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        logger.warning("Could not detect or close 'Save login info' modal with any selector.")
         return False

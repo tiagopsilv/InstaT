@@ -1,4 +1,0 @@
-env
-examples
-instat
-tests

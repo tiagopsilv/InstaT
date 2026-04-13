@@ -1,283 +1,204 @@
-# 🔥 InstaT - Intelligent Instagram Data Extractor
+# InstaT - Intelligent Instagram Data Extractor
 
-**InstaT** is a powerful and easy-to-use Python tool to automatically log in to Instagram and extract followers and following lists. Built with Selenium, it supports mobile user-agent emulation, dynamic scrolling, and strong logging. Perfect for marketers, data analysts, and developers who want fast insights from Instagram profiles.
+**InstaT** is a Python library (`pip install instat`) for automated Instagram data extraction. It logs into Instagram, navigates to any public profile, and extracts follower/following lists via dynamic scrolling with Selenium.
 
-Extract Instagram data reliably for marketing analysis, influencer targeting, or competitive research — all while minimizing the risk of detection.
-
----
-
-## 🚀 Features
-
-- 🔐 **Automated Login**: Logs into Instagram with robust retry logic.
-- 📱 **Mobile Emulation**: Uses a mobile user-agent to reduce detection.
-- 🔁 **Smart Scrolling**: Scrolls dynamically with logic to retry or refresh.
-- 🕒 **Timeout Controls**: Supports `timeout` and `max_duration` to limit operations.
-- ⚙️ **External Selector Configuration**: Cleanly handles changes in Instagram's UI via JSON.
-- 📂 **Advanced Logging**: Integrated with Loguru for colorized logs and persistent files.
-- 🧪 **Built-in Testing**: Unit tests validate login, extraction, and selector loading.
-- 🧠 **Business Ready**: Ideal for marketing agencies, influencer tracking, and client prospecting.
-- 🛡️ **Anti-Ban Friendly**: Designed with human-like delays and retries.
+Built for reliability: humanized timing, exponential backoff, incremental checkpoints, session caching, resilient selectors, and account-block detection.
 
 ---
 
-## 🛠️ Step-by-Step Installation
+## Features
 
-### 1. Clone the repository
+- **Automated Login** with retry logic, fallback button detection, and cookie session cache
+- **Mobile Emulation** (Nexus 5 UA, 375x667) to reduce detection
+- **Humanized Timing** via Gaussian delays (no fixed sleep patterns)
+- **Smart Backoff** with exponential + jitter on stalled scrolling
+- **Incremental Checkpoints** - crash at profile 4500/5000? Resume from checkpoint
+- **Session Cache** - reuses cookies to avoid re-login (biggest ban trigger)
+- **Resilient Selectors** - each selector has fallback alternatives in JSON
+- **Account Block Detection** - detects checkpoint, 2FA, Meta interstitial, and logs actionable instructions
+- **External Selector Config** - update `selectors.json` when Instagram changes UI, no code changes needed
+- **38 Unit Tests** covering all modules
+
+---
+
+## Installation
+
 ```bash
 git clone https://github.com/tiagopsilv/InstaT.git
 cd InstaT
+pip install -e .
 ```
 
-### 2. (Optional) Create and activate a virtual environment
-Using a virtual environment helps avoid dependency conflicts with other projects.
-```bash
-python -m venv venv
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-Installs the necessary libraries (Selenium, Loguru, etc.) to run the tool.
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Python Version
-Ensure you are using **Python 3.8 or higher**.
+Requires **Python 3.8+** and **Firefox** (GeckoDriver is managed automatically).
 
 ---
 
-## ⚙️ Configuration Notes
-
-The `selectors.json` file contains all XPaths and selectors used to interact with Instagram's interface. If Instagram updates its UI, just update the JSON file — no need to change the code.
-
-Ensure it exists at:
-```
-InstaT/config/selectors.json
-```
-
-<details>
-<summary>📄 Example selectors.json structure</summary>
-
-```json
-{
-  "LOGIN_USERNAME_INPUT": "input[name='username']",
-  "LOGIN_PASSWORD_INPUT": "input[name='password']",
-  "LOGIN_BUTTON_CANDIDATE": "//button",
-  "FOLLOWERS_LINK": "//a[contains(@href, '/followers')]/span",
-  "FOLLOWING_LINK": "//a[contains(@href, '/following')]/span",
-  "CLOSE_MODAL_BUTTON": "//div[@role='dialog']//button",
-  "PROFILE_USERNAME_SPAN": "span._ap3a",
-  "IGNORE_BUTTON": "//button[contains(text(), 'Agora n\u00e3o')]",
-  "SAVE_LOGIN_INFO_BUTTON": "//div[@role='dialog']//button",
-  "SAVE_LOGIN_INFO_DIALOG": "//div[@role='dialog']",
-  "LOADING_SPINNER": "//div[@aria-label='Carregando...']"
-}
-```
-</details>
-
----
-
-## 📸 Simple Example
+## Quick Start
 
 ```python
-from InstaT.extractor import InstaExtractor
+from instat import InstaExtractor
 
-try:
-    # Initialize with login credentials and browser configuration
-    extractor = InstaExtractor(
-        username="your_username",
-        password="your_password",
-        headless=True,     # Run browser in background
-        timeout=10         # Max seconds to wait for page elements
-    )
+extractor = InstaExtractor(
+    username="your_username",
+    password="your_password",
+    headless=True,
+    timeout=15
+)
 
-    # Fine-tune scroll logic to behave like a human
-    extractor.max_refresh_attempts = 10
-    extractor.wait_interval = 0.4
-    extractor.additional_scroll_attempts = 2
-    extractor.pause_time = 0.4
-    extractor.max_attempts = 3
-
-    # Optional timeout for the entire extraction session
-    followers = extractor.get_followers("target_profile", max_duration=30.0)
-    following = extractor.get_following("target_profile")
-
-    print("Followers:", followers)
-    print("Following:", following)
-
-except Exception as e:
-    print("Error during extraction:", e)
-
-finally:
-    extractor.quit()
-```
-
-➡️ For a complete example with additional insights and explanations, see [`examples/example_usage.py`](examples/example_usage.py).
-
----
-
-## 🆕 New Utility: `get_total_count()`
-
-You can now retrieve just the **total number of followers or following** without opening the Instagram modal or loading the full list.
-
-### ✅ Example usage:
-
-```python
+followers = extractor.get_followers("target_profile", max_duration=120.0)
+following = extractor.get_following("target_profile", max_duration=120.0)
 count = extractor.get_total_count("target_profile", list_type="followers")
-print("Total followers:", count)
+
+print(f"Followers: {len(followers)}")
+print(f"Following: {len(following)}")
+print(f"Total count: {count}")
+
+extractor.quit()
 ```
 
 ---
 
-## ❓ Common Issues & Fixes
-
-- **Login fails**: Disable `headless=True` if you have 2FA or login challenges.
-- **Empty results**: Instagram may throttle large lists — reduce `max_duration`.
-- **Selectors not working**: Update `selectors.json` if Instagram's layout changed.
-
----
-
-## 🏗️ Architecture Overview
-
-This project is designed around separation of concerns:
-
-- `login.py`: Handles login logic and WebDriver setup using headless Firefox and mobile emulation.
-- `extractor.py`: Core logic for scrolling, modal handling, and profile extraction.
-- `utils.py`: Reliable utility methods to reduce fragile DOM interactions.
-- `selectors.json`: Clean external management of XPaths and selectors.
-- `tests/`: Modular tests covering login, extraction, and selector loading.
-
-**Why this architecture?**
-- ✔️ **Maintainable**: Easy to update selectors and logic independently.
-- ✔️ **Robust**: Exception handling, retries, and clear logging improve stability.
-- ✔️ **Scalable**: Easy to expand to support stories, posts, or messages in the future.
-- ✔️ **Business-Driven**: Built for real-world use cases like influencer analysis, campaign tracking, or follower insights.
-- ✔️ **Testable**: Includes pre-written test cases simulating login flows, extraction behaviors, and JSON config validation.
-
----
-
-## ✅ Tests & Validation
-
-Unit tests ensure code reliability. All core functions are covered:
-
-- `test_login.py`: Simulates login scenarios including success, timeout, invalid credentials, and fallback login button clicks.
-- `test_extractor.py`: Tests modal extraction, scrolling logic, edge cases with slow internet, and profile uniqueness.
-- `test_selector_loader.py`: Validates loading of selectors from JSON and fallback behavior in case of missing or corrupted files.
-
-
-📦 **How to run the tests:**
-```bash
-pytest tests/
-```
-
-📢 We welcome suggestions and improvements! You can contribute:
-- New test scenarios (e.g., multi-factor login, network throttling)
-- Handling of Instagram's UI updates
-- Enhanced performance with asyncio or undetected webdriver
-
-⚠️ *Note*: While implementing asyncio or using undetected webdriver can improve performance and stealth, it may increase maintenance effort and risk breaking with future Instagram updates.
-
----
-
-### 🚨 Exception Handling
-
-InstaT provides robust exception handling to manage login issues, profile access problems, and rate-limiting:
+## Exception Handling
 
 ```python
-from instat import InstaExtractor, LoginError, ProfileNotFoundError, RateLimitError
+from instat import InstaExtractor, LoginError, ProfileNotFoundError, AccountBlockedError
 
 try:
-    extractor = InstaExtractor(username="my_user", password="my_pass")
-    followers = extractor.get_followers("target_profile")
+    extractor = InstaExtractor(username="user", password="pass")
+    followers = extractor.get_followers("target")
 except LoginError:
-    print("Login failed. Check credentials or 2FA.")
+    print("Login failed. Check credentials.")
+except AccountBlockedError as e:
+    print(f"Account blocked: {e.reason}")
+    print(f"Action: see screenshot at {e.screenshot_path}")
 except ProfileNotFoundError:
     print("Profile not found or private.")
-except RateLimitError:
-    print("Rate limit reached. Try again later.")
 ```
 
 ---
 
-## ▶️ Running the Tool
-
-```bash
-python example_usage.py
-```
-
-This script logs into Instagram and prints followers/following of a profile.
-
-📂 For a full instructional example with comments, check:
-```
-examples/example_usage.py
-```
-
----
-
-## 📁 Project Structure
+## Architecture
 
 ```
 InstaT/
-├── extractor.py              # Core extractor logic
-├── login.py                  # Login & browser management
-├── utils.py                  # Helper functions
+├── __init__.py            # Package exports
+├── constants.py           # Centralized timing constants + human_delay()
+├── backoff.py             # SmartBackoff with exponential + jitter
+├── checkpoint.py          # Incremental extraction checkpoints
+├── session_cache.py       # Cookie session persistence
+├── login.py               # InstaLogin - authentication + block detection
+├── extractor.py           # InstaExtractor - scrolling + extraction
+├── utils.py               # Selenium helpers (find_element_with_fallback, etc.)
+├── exceptions.py          # LoginError, ProfileNotFoundError, AccountBlockedError
 ├── config/
-│   └── selectors.json        # UI selectors in JSON
+│   ├── selector_loader.py # JSON loader with get_all() for fallback lists
+│   └── selectors.json     # CSS/XPath selectors with alternatives
 ├── tests/
-│   ├── test_login.py
+│   ├── test_constants.py
+│   ├── test_backoff.py
+│   ├── test_checkpoint.py
+│   ├── test_session_cache.py
+│   ├── test_selector_loader.py
 │   ├── test_extractor.py
-│   └── test_selector_loader.py
+│   └── test_login.py
 └── examples/
-    └── example_usage.py      # Real-world usage sample
+    └── example_usage.py
+```
+
+### Key Design Decisions
+
+| Module | Purpose |
+|--------|---------|
+| `constants.py` | All timing values centralized. `human_delay(base, variance)` adds Gaussian noise to every sleep, preventing detectable patterns. |
+| `backoff.py` | When scrolling stalls, delays escalate: 2s, 4s, 8s... up to 5min. Jitter via `uniform(0.5, 1.5)` prevents regularity. Resets on success. |
+| `checkpoint.py` | Every 100 new profiles, progress is saved to `.instat_checkpoints/`. On crash/block, next run resumes automatically. Expires after 24h. |
+| `session_cache.py` | After login, cookies are saved to `.instat_sessions/`. Next run skips the login form entirely. Expires after 1h. |
+| `selector_loader.py` | Selectors can be a string or a list of alternatives. `get_all()` returns the list; `find_element_with_fallback()` tries each one. |
+| `login.py` | Detects 7 types of account blocks (checkpoint, 2FA, Meta Verified, etc.), saves screenshot + HTML as evidence, raises `AccountBlockedError` with actionable instructions. Falls back to cached GeckoDriver if GitHub API rate-limits `webdriver-manager`. |
+
+---
+
+## Selectors Configuration
+
+Selectors support **fallback alternatives** as JSON arrays. When Instagram changes its UI, update only `selectors.json`:
+
+```json
+{
+    "FOLLOWERS_LINK": [
+        "//a[contains(@href, '/followers/')]",
+        "//a[.//span[contains(text(),'seguidores') or contains(text(),'followers')]]",
+        "//a[contains(text(),'seguidores') or contains(text(),'followers')]"
+    ],
+    "LOGIN_USERNAME_INPUT": "input[name='username']"
+}
+```
+
+Single strings are backward compatible. The `SelectorLoader.get()` returns the first alternative; `get_all()` returns all.
+
+---
+
+## Tuning Parameters
+
+```python
+extractor.pause_time = 0.3                # Seconds between scrolls (default: 0.5)
+extractor.wait_interval = 0.3             # Wait for new profiles (default: 0.5)
+extractor.max_attempts = 3                # Scroll attempts per cycle (default: 2)
+extractor.additional_scroll_attempts = 2  # Extra scrolls on stall (default: 1)
+extractor.max_refresh_attempts = 50       # Max page refreshes (default: 100)
+extractor.max_retry_without_new_profiles = 5  # Retries before backoff (default: 3)
+extractor.checkpoint_interval = 50        # Save every N profiles (default: 100)
 ```
 
 ---
 
-## 💼 Use It for Business
+## Running Tests
 
-This tool is ideal for:
-- 🔍 Influencer discovery
-- 📈 Campaign tracking
-- 🤝 Partnership evaluation
-- 🛍️ Market research for competitors
+```bash
+python -m pytest tests/ -v
+```
 
----
-
-## 👨‍💻 About the Developer
-
-**Tiago Pereira da Silva** is a skilled Python developer and automation expert with deep experience in scraping, process optimization, and systems integration.
-
-- Over 10 years working in systems development and data engineering.
-- Solid knowledge in automation, ETL, .NET, SQL Server, Python and web scraping.
-- Passionate about building smart solutions for businesses and scaling data insights.
-
-🧠 Open to freelance jobs, consulting, partnerships, or part-time tech roles.
-
-📧 [tiagosilv@gmail.com](mailto:tiagosilv@gmail.com)  
-🔗 [linkedin.com/in/tiagopsilvatec](https://www.linkedin.com/in/tiagopsilvatec)
+All 38 tests use `unittest.TestCase` with `MagicMock` - no real browser needed.
 
 ---
 
-## 🌟 Support & Contributions
+## Common Issues
 
-If this project helped you, consider giving it a star ⭐ on GitHub.
-
-You’re welcome to contribute by improving tests, performance, or features.
+| Problem | Solution |
+|---------|----------|
+| Login fails with 2FA | Set `headless=False`, complete verification manually, then reuse cached session |
+| `AccountBlockedError` raised | Check the screenshot in `instat/logs/artifacts/`, follow the logged instructions |
+| Empty results | Increase `max_duration`, check if profile is private |
+| Selectors outdated | Update `InstaT/config/selectors.json` with current Instagram markup |
+| GeckoDriver rate limit | Set `GH_TOKEN` env var, or let the library use the cached geckodriver |
+| Firefox not found | Install Firefox, or check the path |
 
 ---
 
-## 📄 License
+## Changelog (v2.0)
 
-MIT License — see `LICENSE` file for terms.
+| Task | Description |
+|------|-------------|
+| BL-01 | Centralized timing constants + Gaussian `human_delay()` replacing all `time.sleep()` |
+| BL-02 | `SmartBackoff` with exponential delay + jitter for retry logic |
+| BL-03 | `ExtractionCheckpoint` for incremental progress persistence |
+| BL-04 | `SessionCache` for cookie-based session reuse |
+| BL-05 | Modal scroll container detection with body fallback |
+| BL-06 | Dead code cleanup: removed `.bak` files, unused imports, legacy methods |
+| Fixes | Resilient selectors with fallback lists, JS click fallback, account block detection, "Save login" modal dismiss across navigations, `diagnose=False` to prevent credential leaks in logs |
 
 ---
 
-## 📬 Contact for Freelance Projects
+## About the Developer
 
-Tiago Pereira da Silva is available for freelance jobs, web scraping, Python automation, or data extraction consulting.
+**Tiago Pereira da Silva** - Data Science & Analytics Specialist with 19+ years of experience.
 
-📧 [tiagosilv@gmail.com](mailto:tiagosilv@gmail.com)  
-🔗 [linkedin.com/in/tiagopsilvatec](https://www.linkedin.com/in/tiagopsilvatec)
+- MBA Data Science - USP/Esalq | MBA Eng. Software - FIAP
+- Expertise: Python, Selenium, Playwright, ETL, Machine Learning, Web Scraping
+
+[tiagosilv@gmail.com](mailto:tiagosilv@gmail.com) | [LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) | [GitHub](https://github.com/tiagopsilv)
+
+---
+
+## License
+
+MIT License - see `LICENSE` file for terms.

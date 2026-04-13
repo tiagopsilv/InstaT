@@ -10,17 +10,25 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
-    WebDriverException,
-    UnexpectedAlertPresentException
+    WebDriverException
 )
 from selenium.common.exceptions import StaleElementReferenceException
 import time
-import os
-import re
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+try:
+    from instat.constants import human_delay, LOGIN_POST_CLICK_DELAY
+except ImportError:
+    from constants import human_delay, LOGIN_POST_CLICK_DELAY
+try:
+    from instat.session_cache import SessionCache
+except ImportError:
+    from session_cache import SessionCache
+try:
+    from instat.exceptions import AccountBlockedError
+except ImportError:
+    from exceptions import AccountBlockedError
 
 # Setup Loguru logger for advanced logging
 logger.remove()
@@ -31,7 +39,7 @@ logger.add(
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 )
-logger.add("instat/logs/insta_login.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=True)
+logger.add("instat/logs/insta_login.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=False)
 
 # Import our generic utility
 try:
@@ -60,15 +68,28 @@ class InstaLogin:
         "meta verified",
     ]
 
-    def __init__(self, username, password, headless=True, timeout=10):
+    def __init__(self, username, password, headless=True, timeout=10, session_cache=None):
         self.username = username
         self.password = password
         self.timeout = timeout
+        self._session_cache = session_cache
         logger.info("Initializing InstaLogin instance")
         self.driver = self.init_driver(headless)
-        self.close_keywords = ["not now", "agora não", "salvar", "save", "skip"]
+        self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
         self.selectors = SelectorLoader()
     
+    @staticmethod
+    def _find_cached_geckodriver() -> str:
+        """Procura geckodriver no cache local do webdriver-manager."""
+        wdm_dir = Path.home() / ".wdm" / "drivers" / "geckodriver"
+        if not wdm_dir.exists():
+            return None
+        executables = sorted(wdm_dir.rglob("geckodriver*"), reverse=True)
+        for exe in executables:
+            if exe.is_file() and exe.suffix in ('', '.exe'):
+                return str(exe)
+        return None
+
     def init_driver(self, headless):
         logger.debug("Setting up Firefox options with mobile user agent")
         options = webdriver.FirefoxOptions()
@@ -80,10 +101,26 @@ class InstaLogin:
         if headless:
             logger.debug("Enabling headless mode")
             options.add_argument('--headless')
-        
+
+        # Tenta webdriver-manager; se falhar (rate limit), usa cache local
+        geckodriver_path = None
         try:
             logger.debug("Installing GeckoDriver using webdriver-manager")
-            driver = webdriver.Firefox(service=Service(GeckoDriverManager().install()), options=options)
+            geckodriver_path = GeckoDriverManager().install()
+        except Exception as e:
+            logger.warning(f"webdriver-manager failed ({type(e).__name__}), searching local cache...")
+            geckodriver_path = self._find_cached_geckodriver()
+            if geckodriver_path:
+                logger.info(f"Using cached geckodriver: {geckodriver_path}")
+            else:
+                logger.error("No cached geckodriver found. Install Firefox and geckodriver manually.")
+                raise Exception(
+                    "Failed to obtain geckodriver: webdriver-manager rate-limited and no local cache found. "
+                    "Set GH_TOKEN env var or install geckodriver manually."
+                ) from e
+
+        try:
+            driver = webdriver.Firefox(service=Service(geckodriver_path), options=options)
         except WebDriverException as e:
             logger.exception("Error initializing WebDriver")
             raise Exception("Failed to initialize WebDriver.") from e
@@ -96,64 +133,127 @@ class InstaLogin:
             logger.exception("Error executing script to remove webdriver flag")
         return driver
 
-    def _check_for_meta_interstitial(self):
-        """Check if a Meta interstitial (Meta Verified, checkpoint, etc.) appeared after login."""
-        driver = self.driver
-        page_title = (driver.title or "").strip()
-        current_url = driver.current_url
-        html = driver.page_source or ""
-        html_lc = html.casefold()
+    # Mapa de indicadores de bloqueio: padrão na URL -> (reason legível, ação sugerida)
+    BLOCK_INDICATORS = {
+        'challenge':      ("Desafio de segurança (challenge)", "Abra o Instagram no navegador e resolva o desafio manualmente."),
+        'checkpoint':     ("Checkpoint de verificação", "Verifique o e-mail ou SMS associado à conta e confirme a identidade."),
+        'auth_platform':  ("Verificação de plataforma Meta", "Acesse o e-mail da conta e siga as instruções de verificação."),
+        'codeentry':      ("Código de verificação exigido (2FA/e-mail)", "Insira o código enviado por e-mail/SMS no Instagram."),
+        'two_factor':     ("Autenticação de dois fatores (2FA)", "Use o app autenticador ou código SMS para completar o login."),
+        'suspicious':     ("Atividade suspeita detectada", "Faça login manual no navegador para desbloquear a conta."),
+        'consent':        ("Consentimento obrigatório (GDPR/termos)", "Aceite os termos de uso no navegador manualmente."),
+    }
 
-        matched = None
+    def _check_account_blocked(self, driver):
+        """
+        Verificação unificada de bloqueio pós-login.
+        Detecta: checkpoint, 2FA, Meta interstitial, credenciais inválidas, consent.
+        Salva screenshot como evidência e levanta AccountBlockedError com motivo detalhado.
+        """
+        current_url = driver.current_url
+        url_lower = current_url.lower()
+
+        # 1. Detecção por URL (checkpoint, 2FA, challenge, etc.)
+        for indicator, (reason, action) in self.BLOCK_INDICATORS.items():
+            if indicator in url_lower:
+                screenshot_path = self._save_block_evidence(driver, indicator)
+                logger.error(
+                    f"CONTA BLOQUEADA: {reason}\n"
+                    f"  URL: {current_url}\n"
+                    f"  Titulo: {driver.title}\n"
+                    f"  Acao: {action}\n"
+                    f"  Evidencia: {screenshot_path}"
+                )
+                raise AccountBlockedError(
+                    f"Conta bloqueada: {reason}. {action}",
+                    reason=reason,
+                    url=current_url,
+                    screenshot_path=screenshot_path,
+                )
+
+        # 2. Detecção por conteúdo HTML (Meta Verified, etc.)
+        html_lc = (driver.page_source or "").casefold()
+        page_title = (driver.title or "").strip()
+
         for sig in self.META_VERIFIED_SIGNATURES:
             if sig in html_lc:
-                matched = sig
-                break
+                reason = "Intersticial Meta Verified"
+                action = "Verifique o e-mail da conta para instruções de verificação Meta."
+                screenshot_path = self._save_block_evidence(driver, "meta_interstitial")
+                logger.error(
+                    f"CONTA BLOQUEADA: {reason}\n"
+                    f"  URL: {current_url}\n"
+                    f"  Titulo: {page_title}\n"
+                    f"  Assinatura detectada: '{sig}'\n"
+                    f"  Acao: {action}\n"
+                    f"  Evidencia: {screenshot_path}"
+                )
+                raise AccountBlockedError(
+                    f"Conta bloqueada: {reason}. {action}",
+                    reason=reason,
+                    url=current_url,
+                    screenshot_path=screenshot_path,
+                )
 
-        looks_like_fb_title = page_title.casefold().startswith("facebook")
-
-        if matched:
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            artifacts_dir = Path("instat/logs/artifacts")
-            artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-            evidence_path = artifacts_dir / f"meta_interstitial_{ts}.html"
-            screenshot_path = artifacts_dir / f"meta_interstitial_{ts}.png"
-
-            try:
-                with open(evidence_path, "w", encoding="utf-8") as f:
-                    f.write(html)
-            except Exception as e:
-                logger.warning(f"Failed to save page source: {e}")
-
-            try:
-                driver.save_screenshot(str(screenshot_path))
-            except Exception as e:
-                logger.warning(f"Failed to save screenshot: {e}")
-
-            # 🔴 Log now clearly says manual email verification is required
+        # 3. Detecção de página de login ainda ativa (credenciais inválidas ou loop)
+        if '/accounts/login' in url_lower:
+            reason = "Credenciais inválidas ou login em loop"
+            action = "Verifique username/password. A conta pode estar desativada."
+            screenshot_path = self._save_block_evidence(driver, "login_failed")
             logger.error(
-                "Meta/Instagram interstitial detected after login.\n"
-                f"- URL: {current_url}\n"
-                f"- Title: {page_title}\n"
-                f"- Matched signature: '{matched}'\n"
-                f"- Title looks like Facebook? {looks_like_fb_title}\n"
-                f"- Page source: {evidence_path}\n"
-                f"- Screenshot: {screenshot_path}\n"
-                "⚠️ Action required: Check the registered e-mail for verification instructions.\n"
+                f"CONTA BLOQUEADA: {reason}\n"
+                f"  URL: {current_url}\n"
+                f"  Acao: {action}\n"
+                f"  Evidencia: {screenshot_path}"
+            )
+            raise AccountBlockedError(
+                f"Conta bloqueada: {reason}. {action}",
+                reason=reason,
+                url=current_url,
+                screenshot_path=screenshot_path,
             )
 
-            raise MetaInterstitialError(
-                "Login blocked by Meta/Instagram interstitial. "
-                "Manual action required: verify the account through the registered e-mail.",
-                url=current_url,
-                page_title=page_title,
-                evidence_path=str(evidence_path),
-                screenshot_path=str(screenshot_path),
-            )
+    def _save_block_evidence(self, driver, tag: str) -> str:
+        """Salva screenshot e HTML como evidência de bloqueio."""
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        artifacts_dir = Path("instat/logs/artifacts")
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        screenshot_path = artifacts_dir / f"blocked_{tag}_{ts}.png"
+        html_path = artifacts_dir / f"blocked_{tag}_{ts}.html"
+
+        try:
+            driver.save_screenshot(str(screenshot_path))
+        except Exception as e:
+            logger.warning(f"Failed to save screenshot: {e}")
+            screenshot_path = "N/A"
+
+        try:
+            html_path.write_text(driver.page_source or "", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to save page source: {e}")
+
+        return str(screenshot_path)
 
     def login(self):
         driver = self.driver
+
+        # Tentativa de restaurar sessão via cache de cookies
+        if self._session_cache:
+            cookies = self._session_cache.load(self.username)
+            if cookies:
+                try:
+                    driver.get('https://www.instagram.com/')
+                    for c in cookies:
+                        driver.add_cookie(c)
+                    driver.refresh()
+                    if '/accounts/login' not in driver.current_url:
+                        logger.info('Session restored from cookie cache.')
+                        return True
+                    logger.debug('Cached cookies expired or invalid, proceeding with normal login.')
+                except Exception as e:
+                    logger.debug(f'Failed to restore session from cache: {e}')
+
         try:
             logger.info("Navigating to Instagram login page")
             driver.get("https://www.instagram.com/accounts/login/")
@@ -211,7 +311,7 @@ class InstaLogin:
                             WebDriverWait(driver, self.timeout).until(
                                 lambda d: d.execute_script("return document.readyState") == "complete"
                             )
-                            time.sleep(3) 
+                            human_delay(LOGIN_POST_CLICK_DELAY)
                             break
                     except Exception as e:
                         logger.debug(f"Skipping one candidate button due to error: {e}")
@@ -223,12 +323,18 @@ class InstaLogin:
                 logger.exception("Fallback login button click failed")
                 raise Exception("Login failed: Unable to login using fallback method.") from e
 
+        # Validação unificada de bloqueio de conta
+        self._check_account_blocked(driver)
+
         # Handle "Save your login info?" modal using utility method
         Utils.dismiss_save_login_modal(driver, self.close_keywords, self.timeout)
 
-        self._check_for_meta_interstitial()
-
         logger.info("Login successful!")
+
+        if self._session_cache:
+            self._session_cache.save(self.username, driver.get_cookies())
+            logger.debug('Session cookies saved to cache.')
+
         return True
 
 if __name__ == '__main__':

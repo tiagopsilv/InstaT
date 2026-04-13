@@ -1,25 +1,26 @@
 import json
 import os
 import logging
+from typing import List, Optional
 
 class SelectorLoader:
     """
-    Loads a set of CSS or XPath selectors from a JSON file.
+    Loads CSS/XPath selectors from a JSON file with support for fallback alternatives.
 
-    This class is intended to centralize selector definitions used throughout the InstaT package.
-    It attempts to load a selectors.json configuration file at initialization and provides
-    access to the selectors via the `get` method.
+    Selector values can be:
+    - A string: single selector (backward compatible)
+    - A list of strings: tried in order until one works (resilient to Instagram UI changes)
 
-    If the file does not exist or is malformed, it safely falls back to an empty configuration
-    while logging the error.
+    Example selectors.json:
+        {
+            "LOGIN_USERNAME_INPUT": "input[name='username']",
+            "FOLLOWERS_LINK": [
+                "//a[contains(@href, '/followers/')]",
+                "//a[.//span[contains(text(),'seguidores')]]"
+            ]
+        }
     """
     def __init__(self, config_path: str = None):
-        """
-        Initializes the SelectorLoader.
-
-        :param config_path: Optional path to the JSON file with selector definitions.
-                            If not provided, defaults to 'selectors.json' in the current directory.
-        """
         if config_path is None:
             config_path = os.path.join(os.path.dirname(__file__), "selectors.json")
 
@@ -36,14 +37,28 @@ class SelectorLoader:
 
     def get(self, key: str) -> str:
         """
-        Get the selector by key. Raises KeyError if not found.
-
-        :param key: The key of the selector to retrieve
-        :return: The selector string (CSS or XPath)
+        Get the primary selector by key. For lists, returns the first entry.
+        Raises KeyError if not found.
         """
         if key not in self.selectors:
             raise KeyError(f"Selector '{key}' not found in selectors config.")
-        return self.selectors[key]
+        value = self.selectors[key]
+        if isinstance(value, list):
+            return value[0]
+        return value
+
+    def get_all(self, key: str) -> List[str]:
+        """
+        Get all selector alternatives for a key as a list.
+        Single-string values are wrapped in a list for uniform handling.
+        Raises KeyError if not found.
+        """
+        if key not in self.selectors:
+            raise KeyError(f"Selector '{key}' not found in selectors config.")
+        value = self.selectors[key]
+        if isinstance(value, list):
+            return value
+        return [value]
 
 
 __all__ = ["SelectorLoader"]

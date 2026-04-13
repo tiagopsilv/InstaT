@@ -1,11 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from selenium.common.exceptions import TimeoutException
-import sys
-import os
-
-# Ensure the root directory is in the path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from instat.login import InstaLogin
 
@@ -17,20 +12,6 @@ class TestInstaLogin(unittest.TestCase):
     - Fallback login attempt
     - Invalid credentials
     - Successful login flow
-    
-    --------------------------------------------------------------------------
-    About the developer:
-    This solution was created by Tiago Pereira da Silva, a passionate and highly skilled 
-    Data & Automation Specialist with experience in financial systems, Python development, 
-    and web scraping at scale. 
-
-    Tiago is currently open to new freelance opportunities and job offers (remote or hybrid),
-    especially in the fields of data engineering, automation, and digital intelligence.
-
-    🔗 LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
-    💻 GitHub: https://github.com/tiagopsilv
-    📧 Contact: tiagosilv@gmail.com
-    --------------------------------------------------------------------------    
     """
 
     @classmethod
@@ -94,6 +75,10 @@ class TestInstaLogin(unittest.TestCase):
         """
         Should return True when login completes successfully.
         """
+        # After login redirect, URL must change to feed
+        self.mock_driver.current_url = "https://www.instagram.com/"
+        self.mock_driver.page_source = "<html></html>"
+        self.mock_driver.title = "Instagram"
         username_mock = MagicMock()
         password_mock = MagicMock()
         mock_wait.return_value.until.side_effect = [username_mock, password_mock, True]
@@ -127,28 +112,17 @@ class TestInstaLogin(unittest.TestCase):
         self.client.driver = mock_driver
         self.client.timeout = 10
 
+        # After login, URL must be feed for _check_account_blocked to pass
+        mock_driver.current_url = "https://www.instagram.com/"
+        mock_driver.page_source = "<html></html>"
+        mock_driver.title = "Instagram"
+
         # Username and password fields found
         mock_username_input = MagicMock()
         mock_password_input = MagicMock()
-        mock_wait.return_value.until.side_effect = [mock_username_input, mock_password_input]
-
-        # Login button with correct text
-        mock_login_button = MagicMock()
-        mock_login_button.text = "Log In"
-
-        def click_login_button():
-            # Simulate URL change indicating login success
-            mock_driver.current_url = "https://www.instagram.com/"
-        mock_login_button.click.side_effect = click_login_button
-
-        # Return one valid login button
-        mock_driver.find_elements.return_value = [mock_login_button]
-
-        # Initial login URL
-        mock_driver.current_url = "https://www.instagram.com/accounts/login/"
 
         # After clicking login, simulate the URL changes, which satisfies WebDriverWait
-        mock_wait.return_value.until.side_effect = [mock_username_input, mock_password_input, lambda d: True]
+        mock_wait.return_value.until.side_effect = [mock_username_input, mock_password_input, True]
 
         result = self.client.login()
         self.assertTrue(result)

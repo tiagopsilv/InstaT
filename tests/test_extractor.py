@@ -1,11 +1,8 @@
 import unittest
 import sys
-import os
 import time
 from unittest.mock import patch, MagicMock
 from loguru import logger
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from instat.extractor import InstaExtractor
 
@@ -18,21 +15,6 @@ class TestInstaExtractor(unittest.TestCase):
     """
     Test cases for InstaExtractor.
     The extractor logs into Instagram automatically upon instantiation.
-
-    --------------------------------------------------------------------------
-    About the developer:
-    This solution was created by Tiago Pereira da Silva, a passionate and highly skilled 
-    Data & Automation Specialist with experience in financial systems, Python development, 
-    and web scraping at scale. 
-
-    Tiago is currently open to new freelance opportunities and job offers (remote or hybrid),
-    especially in the fields of data engineering, automation, and digital intelligence.
-
-    🔗 LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
-    💻 GitHub: https://github.com/tiagopsilv
-    📧 Contact: tiagosilv@gmail.com
-    --------------------------------------------------------------------------
-
     """
 
     @classmethod
@@ -84,18 +66,22 @@ class TestInstaExtractor(unittest.TestCase):
                 with self.assertRaises((ValueError, AttributeError)):
                     self.extractor.parse_count_text(input_text)
 
-    @patch('instat.extractor.InstaExtractor._open_list_modal', return_value=10)
     @patch('instat.extractor.InstaExtractor.get_profiles', return_value=['user1', 'user2'])
-    def test_get_followers_mocked(self, mock_get_profiles, mock_open_modal):
+    @patch('instat.extractor.InstaExtractor._click_link_element', return_value=True)
+    @patch('instat.extractor.InstaExtractor._navigate_and_get_link')
+    def test_get_followers_mocked(self, mock_nav, mock_click, mock_get_profiles):
+        mock_link = MagicMock()
+        mock_link.text = "404\nfollowers"
+        mock_nav.return_value = mock_link
         followers = self.extractor.get_followers(self.profile_id)
         self.assertEqual(followers, ['user1', 'user2'])
-        mock_open_modal.assert_called_once_with(self.profile_id, 'followers')
+        mock_nav.assert_called()
         mock_get_profiles.assert_called_once()
 
-    @patch('instat.extractor.InstaExtractor._open_list_modal', return_value=None)
-    def test_get_followers_modal_failure(self, mock_open_modal):
+    @patch('instat.extractor.InstaExtractor._navigate_and_get_link', return_value=None)
+    def test_get_followers_nav_failure(self, mock_nav):
         followers = self.extractor.get_followers(self.profile_id)
-        self.assertEqual(followers, [], "Expected empty list when modal fails to open.")
+        self.assertEqual(followers, [], "Expected empty list when navigation fails.")
 
     @patch('instat.extractor.InstaExtractor.get_profiles', return_value=[])
     def test_max_duration_enforcement(self, mock_get_profiles):
@@ -104,8 +90,8 @@ class TestInstaExtractor(unittest.TestCase):
         duration = time.perf_counter() - start_time
         self.assertLessEqual(duration, 1.5, "Duration exceeded max_duration significantly.")
 
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=[])
-    def test_handle_invalid_profile(self, mock_get_profiles):
+    @patch('instat.extractor.InstaExtractor._navigate_and_get_link', return_value=None)
+    def test_handle_invalid_profile(self, mock_nav):
         result = self.extractor.get_followers("invalid_profile")
         self.assertEqual(result, [], "Expected empty list for invalid profile.")
 

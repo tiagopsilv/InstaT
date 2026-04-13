@@ -6,6 +6,16 @@ __pycache__/
 *.log
 *.sqlite3
 *.db
+*.bak
 .idea/
 .vscode/
 .DS_Store
+
+# InstaT runtime artifacts
+.instat_checkpoints/
+.instat_sessions/
+instat/logs/artifacts/
+InstaT/logs/
+
+# Egg info
+*.egg-info/

@@ -11,3 +11,11 @@ class ProfileNotFoundError(Exception):
 class RateLimitError(Exception):
     """Exceção para limites de requisição atingidos."""
     pass
+
+class AccountBlockedError(Exception):
+    """Exceção para conta bloqueada por checkpoint, 2FA, ou verificação obrigatória."""
+    def __init__(self, message, *, reason, url=None, screenshot_path=None):
+        super().__init__(message)
+        self.reason = reason
+        self.url = url
+        self.screenshot_path = screenshot_path

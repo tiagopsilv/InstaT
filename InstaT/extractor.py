@@ -1,7 +1,6 @@
 # Built-in
 import sys
 import time
-import os
 import re
 from typing import List, Optional
 
@@ -11,8 +10,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Configure Loguru logger for this module
 logger.remove()
@@ -27,7 +24,7 @@ logger.add(
         "<level>{message}</level>"
     )
 )
-logger.add("InstaT/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=True)
+logger.add("InstaT/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=False)
 
 # Local project modules
 try:
@@ -36,6 +33,22 @@ try:
 except ImportError:
     from login import InstaLogin
     from config.selector_loader import SelectorLoader
+try:
+    from instat.constants import human_delay, SCROLL_PAUSE, PROFILE_WAIT_INTERVAL, LOGIN_POST_CLICK_DELAY
+except ImportError:
+    from constants import human_delay, SCROLL_PAUSE, PROFILE_WAIT_INTERVAL, LOGIN_POST_CLICK_DELAY
+try:
+    from instat.backoff import SmartBackoff
+except ImportError:
+    from backoff import SmartBackoff
+try:
+    from instat.checkpoint import ExtractionCheckpoint
+except ImportError:
+    from checkpoint import ExtractionCheckpoint
+try:
+    from instat.session_cache import SessionCache
+except ImportError:
+    from session_cache import SessionCache
 try:
     from instat.utils import Utils
 except ImportError:
@@ -79,20 +92,6 @@ class InstaExtractor:
     - pause_time (float): Time (in seconds) to pause between scrolls. Default: 0.5.
     - max_attempts (int): Maximum attempts for scrolling to find new profiles. Default: 2.
 
-    --------------------------------------------------------------------------
-    About the developer:
-    This solution was created by Tiago Pereira da Silva, a passionate and highly skilled 
-    Data & Automation Specialist with experience in financial systems, Python development, 
-    and web scraping at scale. 
-
-    Tiago is currently open to new freelance opportunities and job offers (remote or hybrid),
-    especially in the fields of data engineering, automation, and digital intelligence.
-
-    🔗 LinkedIn: https://www.linkedin.com/in/tiagopsilvatec/
-    💻 GitHub: https://github.com/tiagopsilv
-    📧 Contact: tiagosilv@gmail.com
-    --------------------------------------------------------------------------
-
     """
 
     def __init__(self, username: str, password: str, headless: bool = True, timeout: int = 10) -> None:
@@ -102,15 +101,18 @@ class InstaExtractor:
 
         # Default Parameters
         self.max_refresh_attempts = 100
-        self.wait_interval = 0.5
+        self.wait_interval = PROFILE_WAIT_INTERVAL
         self.additional_scroll_attempts = 1
-        self.pause_time = 0.5
+        self.pause_time = SCROLL_PAUSE
         self.max_attempts = 2
-        self.max_retry_without_new_profiles = 3 
+        self.max_retry_without_new_profiles = 3
+        self._backoff = SmartBackoff()
+        self.checkpoint_interval = 100
+        self._session_cache = SessionCache()
 
         logger.info("Initializing InstaExtractor with username: {}", username)
         try:
-            self.insta_login = InstaLogin(username, password, headless=headless, timeout=timeout)
+            self.insta_login = InstaLogin(username, password, headless=headless, timeout=timeout, session_cache=self._session_cache)
             self.insta_login.login()
             self.driver = self.insta_login.driver
             logger.info("Logged in successfully as {}", username)
@@ -155,6 +157,7 @@ class InstaExtractor:
     def _navigate_and_get_link(self, profile_id: str, list_type: str):
         """
         Navega até o perfil e retorna o elemento do link (seguidores ou seguindo).
+        Usa seletores com fallback para resiliência contra mudanças de UI.
         """
         url = f"https://www.instagram.com/{profile_id}/"
         logger.info("Navigating to profile: {}", url)
@@ -164,23 +167,29 @@ class InstaExtractor:
             logger.exception("Error navigating to profile: {}", e)
             return None
 
-        xpath_map = {
-            'followers': selectors.get("FOLLOWERS_LINK"),
-            'following': selectors.get("FOLLOWING_LINK")
+        # Dismiss "Save login info?" modal if it reappears after navigation
+        Utils.dismiss_save_login_modal(
+            self.driver,
+            self.insta_login.close_keywords if hasattr(self, 'insta_login') else ["not now", "save"],
+            timeout=3
+        )
+
+        selector_key_map = {
+            'followers': "FOLLOWERS_LINK",
+            'following': "FOLLOWING_LINK"
         }
-        xpath = xpath_map.get(list_type)
-        if not xpath:
+        selector_key = selector_key_map.get(list_type)
+        if not selector_key:
             logger.error("Invalid list type provided: {}", list_type)
             return None
 
-        try:
-            link = WebDriverWait(self.driver, self.timeout).until(
-                EC.presence_of_element_located((By.XPATH, xpath))
-            )
+        selector_alternatives = selectors.get_all(selector_key)
+        link = Utils.find_element_with_fallback(self.driver, selector_alternatives, timeout=self.timeout)
+        if link:
             return link
-        except (TimeoutException, WebDriverException) as e:
-            logger.exception("Error locating {} link: {}", list_type, e)
-            raise ProfileNotFoundError(f"Could not find {list_type} link for '{profile_id}'") from e
+
+        logger.error("Could not find {} link for '{}' with any selector alternative.", list_type, profile_id)
+        raise ProfileNotFoundError(f"Could not find {list_type} link for '{profile_id}'")
         
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """
@@ -202,33 +211,117 @@ class InstaExtractor:
             logger.exception("Error parsing {} count: {}", list_type, e)
             return None
 
-    def _click_list_link(self, profile_id: str, list_type: str) -> bool:
-        """
-        Clica no link de seguidores ou seguindo.
-        """
-        link = self._navigate_and_get_link(profile_id, list_type)
-        if not link:
-            return False
-
+    def _click_link_element(self, link, list_type: str) -> bool:
+        """Clica num elemento de link já encontrado. Tenta nativo, depois JS."""
         try:
             WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable(link))
             link.click()
             logger.debug("Clicked on the {} link.", list_type)
             return True
         except (TimeoutException, WebDriverException) as e:
-            logger.exception("Error clicking {} link: {}", list_type, e)
+            logger.debug(f"Native click failed for {list_type}: {type(e).__name__}, trying JS click...")
+
+        try:
+            self.driver.execute_script("arguments[0].click();", link)
+            logger.debug("Clicked on the {} link via JS.", list_type)
+            return True
+        except WebDriverException as e:
+            logger.warning(f"JS click also failed for {list_type}: {e}")
             return False
+
+    def _click_list_link(self, profile_id: str, list_type: str) -> bool:
+        """
+        Clica no link de seguidores ou seguindo.
+        Tenta click nativo; se ElementNotInteractable, tenta JS click.
+        Se o primeiro elemento não é clicável, tenta alternativas.
+        """
+        link = self._navigate_and_get_link(profile_id, list_type)
+        if not link:
+            return False
+
+        # Tenta click nativo
+        try:
+            WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable(link))
+            link.click()
+            logger.debug("Clicked on the {} link.", list_type)
+            return True
+        except (TimeoutException, WebDriverException) as e:
+            logger.debug(f"Native click failed for {list_type}: {type(e).__name__}, trying JS click...")
+
+        # Fallback: JS click no mesmo elemento
+        try:
+            self.driver.execute_script("arguments[0].click();", link)
+            logger.debug("Clicked on the {} link via JS.", list_type)
+            return True
+        except WebDriverException as e:
+            logger.debug(f"JS click failed for {list_type}: {type(e).__name__}, trying alternative elements...")
+
+        # Fallback: buscar todos os elementos e tentar cada um
+        selector_key = "FOLLOWERS_LINK" if list_type == 'followers' else "FOLLOWING_LINK"
+        for sel in selectors.get_all(selector_key):
+            by = By.XPATH if sel.startswith('//') else By.CSS_SELECTOR
+            try:
+                elements = self.driver.find_elements(by, sel)
+                for elem in elements:
+                    try:
+                        elem.click()
+                        logger.debug("Clicked on {} link via alternative selector.", list_type)
+                        return True
+                    except WebDriverException:
+                        try:
+                            self.driver.execute_script("arguments[0].click();", elem)
+                            logger.debug("Clicked on {} link via JS on alternative.", list_type)
+                            return True
+                        except WebDriverException:
+                            continue
+            except WebDriverException:
+                continue
+
+        logger.error("Could not click {} link after all attempts.", list_type)
+        return False
 
         
     def _extract_list(self, profile_id: str, list_type: str, max_duration: Optional[float]) -> List[str]:
         """
         Extracts followers or following by opening the modal and then calling get_profiles.
+        Uses ExtractionCheckpoint to persist and resume progress.
         """
-        total_count = self.get_total_count(profile_id, list_type)
-        if total_count is None or not self._click_list_link(profile_id, list_type):
-            return []
+        ckpt = ExtractionCheckpoint(profile_id, list_type)
+        existing = ckpt.load() or set()
+        if existing:
+            logger.info(f"Resuming from checkpoint: {len(existing)} profiles already collected.")
 
-        usernames = self.get_profiles(total_count, max_duration)
+        # Navega ao perfil e obtém o link (uma única navegação)
+        link = self._navigate_and_get_link(profile_id, list_type)
+        if not link:
+            return list(existing) if existing else []
+
+        # Extrai contagem do texto do link (sem re-navegar)
+        try:
+            parts = link.text.split()
+            raw = parts[0]
+            if len(parts) > 1 and parts[1].lower() in ("k", "m", "mi", "mil"):
+                raw += parts[1]
+            total_count = self.parse_count_text(raw)
+            logger.debug("Parsed total {}: {}", list_type, total_count)
+        except (ValueError, IndexError) as e:
+            logger.exception("Error parsing {} count: {}", list_type, e)
+            return list(existing) if existing else []
+
+        # Clica no link (sem re-navegar — usa o link já encontrado)
+        if not self._click_link_element(link, list_type):
+            return list(existing) if existing else []
+
+        try:
+            usernames = self.get_profiles(total_count, max_duration, initial_profiles=existing, checkpoint=ckpt)
+        except Exception:
+            logger.exception("Extraction failed. Progress saved in checkpoint.")
+            raise
+        finally:
+            if existing:
+                ckpt.save(existing)
+
+        ckpt.clear()
 
         try:
             close_button = WebDriverWait(self.driver, self.timeout).until(
@@ -261,18 +354,25 @@ class InstaExtractor:
         """
         return self._extract_list(profile_id, 'following', max_duration)
 
-    def get_profiles(self, expected_count: int, max_duration: Optional[float]) -> List[str]:
+    def get_profiles(self, expected_count: int, max_duration: Optional[float],
+                     initial_profiles: Optional[set] = None,
+                     checkpoint: Optional[ExtractionCheckpoint] = None) -> List[str]:
         """
         Extracts unique Instagram profile names from a dynamically loaded followers or following modal.
         Scrolls incrementally through the modal dialog, ensuring the complete extraction of all profiles.
         :param expected_count: The number of profiles expected to be extracted.
+        :param initial_profiles: Optional set of profiles from a previous checkpoint.
+        :param checkpoint: Optional ExtractionCheckpoint for incremental saving.
         :return: List of unique profile usernames.
         """
         start_time = time.perf_counter()
-        unique_profiles = set()
+        unique_profiles = set(initial_profiles) if initial_profiles else set()
+        if unique_profiles:
+            logger.info(f"Starting with {len(unique_profiles)} profiles from checkpoint.")
+        _last_checkpoint_count = len(unique_profiles)
         refresh_attempts, try_count, previous_count = 0, 0, 0
 
-        body = self._get_scrollable_body()
+        body = self._get_scrollable_container()
         if body is None:
             return []
 
@@ -284,6 +384,12 @@ class InstaExtractor:
             self._wait_for_new_profiles(body, unique_profiles)
 
             new_profiles_found = self._extract_visible_profiles(unique_profiles)
+
+            # Checkpoint incremental
+            if checkpoint and (len(unique_profiles) - _last_checkpoint_count) >= self.checkpoint_interval:
+                checkpoint.save(unique_profiles)
+                _last_checkpoint_count = len(unique_profiles)
+                logger.info(f"Checkpoint saved: {len(unique_profiles)} profiles")
 
             if len(unique_profiles) >= expected_count:
                 logger.info("Expected profile count reached.")
@@ -299,14 +405,24 @@ class InstaExtractor:
         logger.info(f"Profile extraction completed in {elapsed:.2f} seconds. Total unique profiles: {len(unique_profiles)}")
         return list(unique_profiles)
 
-    def _get_scrollable_body(self):
+    def _get_scrollable_container(self):
+        """Tenta encontrar o container de scroll do modal. Fallback para body."""
         try:
+            modal = Utils.find_element_safe(
+                self.driver, By.CSS_SELECTOR,
+                selectors.get('MODAL_SCROLL_CONTAINER'),
+                max_retries=2
+            )
+            if modal:
+                logger.debug('Using modal scroll container.')
+                return modal
+            logger.debug('Modal container not found, falling back to body.')
             body = Utils.find_element_safe(self.driver, By.TAG_NAME, "body")
             if not body:
                 logger.error("Failed to find body element. Exiting profile extraction.")
             return body
         except Exception as e:
-            logger.exception("Error finding body element: {}", e)
+            logger.exception("Error finding scrollable container: {}", e)
             return None
 
     def _is_max_duration_exceeded(self, start_time, max_duration):
@@ -360,6 +476,7 @@ class InstaExtractor:
         current_count = previous_count + (1 if new_profiles_found else 0)
         if current_count > previous_count:
             logger.debug(f"Found new profiles, total now {current_count}")
+            self._backoff.reset()
             return refresh_attempts, 0, current_count
 
         try_count += 1
@@ -367,9 +484,9 @@ class InstaExtractor:
 
         if try_count > self.max_retry_without_new_profiles:
             refresh_attempts += 1
-            logger.info("No new profiles after several attempts, refreshing page.")
+            delay = self._backoff.wait()
+            logger.info(f"No new profiles after several attempts. Backoff {delay:.1f}s (attempt {self._backoff.attempt}), refreshing page.")
             self.driver.refresh()
-            time.sleep(3)
             return refresh_attempts, 0, 0
 
         return refresh_attempts, try_count, previous_count
