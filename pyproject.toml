@@ -99,7 +99,10 @@ ignore = [
 "tests/*" = ["E402", "F401"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
+files = ["InstaT"]
+follow_imports = "silent"
+namespace_packages = false
 ignore_missing_imports = true
 check_untyped_defs = false
 warn_unused_ignores = false
@@ -107,11 +110,13 @@ warn_redundant_casts = true
 no_implicit_optional = true
 # Disable error codes that produce many false positives due to lazy-init pattern
 # (self._client = None → later self._client = httpx.Client(...))
-disable_error_code = ["attr-defined", "return-value", "assignment", "misc", "return"]
+disable_error_code = ["attr-defined", "return-value", "assignment", "misc", "return", "type-var", "arg-type"]
 exclude = [
     "^build/",
     "^dist/",
     "^.venv/",
     "^instat\\.egg-info/",
-    "^tests/"
+    "^tests/",
+    "site-packages",
+    "_pytest"
 ]

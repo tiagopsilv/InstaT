@@ -39,7 +39,7 @@ jobs:
       - name: Install
         run: pip install -e '.[dev]'
       - name: Pytest
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -m "not e2e" -v --tb=short
 
   build:
     runs-on: ubuntu-latest

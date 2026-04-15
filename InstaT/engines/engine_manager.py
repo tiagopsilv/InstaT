@@ -47,7 +47,7 @@ class EngineManager:
         self._proxy_pool = proxy_pool
         self._session_pool = session_pool
         self._default_credentials = default_credentials
-        self._logged_in_engines = set()  # track which engines already logged in
+        self._logged_in_engines: set[int] = set()  # track which engines already logged in
 
         pool_info_parts = []
         if proxy_pool:
