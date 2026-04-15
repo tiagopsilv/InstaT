@@ -78,15 +78,19 @@ class InstaExtractor:
                  proxies: Optional[List[str]] = None,
                  accounts: Optional[List[Dict[str, str]]] = None,
                  engines: Optional[List[str]] = None,
-                 exporter: Optional[BaseExporter] = None) -> None:
+                 exporter: Optional[BaseExporter] = None,
+                 imap_config=None) -> None:
         """
         engines: lista de nomes ['selenium', 'playwright', 'httpx']. Default: ['selenium'].
         exporter: exporter opcional chamado após cada extração bem-sucedida.
+        imap_config: dict com host/user/password/port/... para resolver o
+          challenge 'Check your email' do Instagram via IMAP automaticamente.
         """
         self.username = username
         self.password = password
         self.timeout = timeout
         self._exporter = exporter
+        self._imap_config = imap_config
 
         proxy_pool = None
         if proxies:
@@ -102,6 +106,13 @@ class InstaExtractor:
         engine_names = engines or ['selenium']
         engine_instances = self._build_engines(engine_names, headless, timeout)
         primary_engine = engine_instances[0]
+
+        # Propaga imap_config para engines Selenium (único capaz de resolver
+        # challenge via browser).
+        if imap_config is not None:
+            for eng in engine_instances:
+                if hasattr(eng, '_imap_config'):
+                    eng._imap_config = imap_config
 
         logger.info("Initializing InstaExtractor with username: {}", username)
 

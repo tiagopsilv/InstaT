@@ -57,12 +57,13 @@ class SeleniumEngine(BaseEngine):
 
     def __init__(self, headless=True, timeout=10, _login_class=None,
                  proxy: Optional[str] = None, base_url: Optional[str] = None,
-                 **kwargs):
+                 imap_config=None, **kwargs):
         self.headless = headless
         self.timeout = timeout
         self._login_class = _login_class or InstaLogin
         self._proxy = proxy  # stored for BL-13 integration with FirefoxOptions
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
+        self._imap_config = imap_config
         self._login_obj = None
         self._driver = None
         self._session_cache = SessionCache()
@@ -89,6 +90,7 @@ class SeleniumEngine(BaseEngine):
             headless=self.headless, timeout=self.timeout,
             session_cache=self._session_cache,
             base_url=self._base_url,
+            imap_config=self._imap_config,
         )
         self._login_obj.login()
         self._driver = self._login_obj.driver

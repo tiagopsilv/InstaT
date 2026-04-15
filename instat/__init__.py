@@ -12,6 +12,7 @@ from .async_extractor import AsyncInstaExtractor  # last: depends on extractor +
 from .backoff import SmartBackoff
 from .checkpoint import ExtractionCheckpoint
 from .constants import human_delay
+from .email_code import ImapConfig, fetch_instagram_code
 from .engines import BaseEngine, EngineManager, HttpxEngine, PlaywrightEngine, SeleniumEngine
 from .exceptions import (
     AccountBlockedError,
@@ -63,4 +64,6 @@ __all__ = [
     "SQLiteExporter",
     "CallbackExporter",
     "Profile",
+    "ImapConfig",
+    "fetch_instagram_code",
 ]

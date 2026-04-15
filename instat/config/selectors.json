@@ -52,5 +52,20 @@
         "div[role='dialog'] div[style*='overflow']",
         "div[role='dialog'] ul",
         "div[role='dialog'] div[style*='height']"
+    ],
+    "EMAIL_CHALLENGE_HEADING": [
+        "h2[aria-label='Check your email']",
+        "h2[aria-label='Confira seu e-mail']",
+        "h2[aria-label='Confira seu email']"
+    ],
+    "EMAIL_CHALLENGE_INPUT": [
+        "input[aria-label='Enter code']",
+        "input[aria-label='Insira o código']",
+        "input[inputmode='numeric']"
+    ],
+    "EMAIL_CHALLENGE_CONTINUE": [
+        "//div[@role='button' and @aria-label='Continue']",
+        "//div[@role='button' and @aria-label='Continuar']",
+        "//button[@aria-label='Continue' or @aria-label='Continuar']"
     ]
 }

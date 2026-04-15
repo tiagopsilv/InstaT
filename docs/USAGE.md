@@ -8,6 +8,34 @@ Complete reference for every entry point. All examples assume `INSTAT_USERNAME` 
 
 Primary synchronous facade.
 
+### Email challenge auto-resolve (IMAP)
+
+When Instagram shows "Check your email — enter the code", InstaT can
+auto-fetch the code from your inbox via IMAP:
+
+```python
+ext = InstaExtractor(
+    username, password,
+    imap_config={
+        "host": "imap.gmail.com",
+        "user": "your_email@gmail.com",
+        "password": "<gmail_app_password>",  # NOT the regular password
+        "port": 993,
+        "timeout": 90,         # total seconds polling
+        "poll_interval": 3.0,
+        "since_minutes": 10,   # only consider emails newer than this
+    },
+)
+```
+
+For Gmail: enable 2FA → https://myaccount.google.com/apppasswords →
+"App: Mail / Device: Other" → use the 16-char password here.
+
+When the challenge appears, `InstaLogin` detects the `Check your email`
+heading, polls IMAP for a recent message from `*@mail.instagram.com`
+containing a 6-digit code, fills the input, and clicks Continue. Cookies
+are saved to `SessionCache` so subsequent runs skip the challenge.
+
 ### Constructor
 
 ```python

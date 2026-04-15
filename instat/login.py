@@ -5,6 +5,7 @@ from pathlib import Path
 from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import (
+    NoSuchElementException,
     TimeoutException,
     WebDriverException,
 )
@@ -65,12 +66,13 @@ class InstaLogin:
     ]
 
     def __init__(self, username, password, headless=True, timeout=10,
-                 session_cache=None, base_url=None):
+                 session_cache=None, base_url=None, imap_config=None):
         self.username = username
         self.password = password
         self.timeout = timeout
         self._session_cache = session_cache
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
+        self._imap_config = imap_config
         logger.info("Initializing InstaLogin instance")
         self.driver = self.init_driver(headless)
         self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
@@ -298,6 +300,94 @@ class InstaLogin:
                 pass
             return False
 
+    def _try_handle_email_challenge(self, driver) -> bool:
+        """
+        Detecta a página 'Check your email' e preenche o código via IMAP.
+
+        Retorna True se resolveu o challenge, False se não havia challenge
+        ou não foi possível resolver (no último caso, deixa o fluxo normal
+        de detecção de bloqueio tratar).
+        """
+        if not self._imap_config:
+            return False
+        try:
+            from instat.email_code import ImapConfig, fetch_instagram_code
+        except ImportError:
+            from email_code import ImapConfig, fetch_instagram_code
+
+        # Detecta heading da página
+        headings = self.selectors.get_all("EMAIL_CHALLENGE_HEADING")
+        heading_found = False
+        for sel in headings:
+            try:
+                driver.find_element(By.CSS_SELECTOR, sel)
+                heading_found = True
+                break
+            except NoSuchElementException:
+                continue
+        if not heading_found:
+            return False
+
+        logger.info("Detected email verification challenge — fetching code via IMAP")
+        from datetime import datetime, timezone
+        started_at = datetime.now(timezone.utc)
+        cfg = ImapConfig.from_dict(self._imap_config)
+        code = fetch_instagram_code(cfg, started_at=started_at)
+        if not code:
+            logger.warning("IMAP fetch returned no code; falling back to block detection")
+            return False
+
+        # Preenche o input
+        input_el = None
+        for sel in self.selectors.get_all("EMAIL_CHALLENGE_INPUT"):
+            try:
+                input_el = driver.find_element(By.CSS_SELECTOR, sel)
+                break
+            except NoSuchElementException:
+                continue
+        if input_el is None:
+            logger.warning("Email challenge input not found after detection")
+            return False
+
+        try:
+            input_el.clear()
+        except Exception:
+            pass
+        input_el.send_keys(code)
+
+        # Clica Continue
+        clicked = False
+        for sel in self.selectors.get_all("EMAIL_CHALLENGE_CONTINUE"):
+            try:
+                btn = driver.find_element(By.XPATH, sel)
+                try:
+                    btn.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", btn)
+                clicked = True
+                break
+            except NoSuchElementException:
+                continue
+        if not clicked:
+            logger.warning("Could not click Continue on email challenge")
+            return False
+
+        # Aguarda navegação sair do challenge
+        def _challenge_gone(d):
+            for s in headings:
+                try:
+                    d.find_element(By.CSS_SELECTOR, s)
+                    return False
+                except NoSuchElementException:
+                    continue
+            return True
+        try:
+            WebDriverWait(driver, self.timeout).until(_challenge_gone)
+            return True
+        except TimeoutException:
+            logger.warning("Email challenge page still present after Continue")
+            return False
+
     def login(self):
         driver = self.driver
 
@@ -378,6 +468,10 @@ class InstaLogin:
             except Exception as e:
                 logger.exception("Fallback login button click failed")
                 raise Exception("Login failed: Unable to login using fallback method.") from e
+
+        # Se bateu em challenge "Check your email" e temos IMAP configurado, resolve automaticamente.
+        if self._try_handle_email_challenge(driver):
+            logger.info("Email challenge resolved via IMAP auto-fetch")
 
         # Validação unificada de bloqueio de conta
         self._check_account_blocked(driver)
