@@ -24,6 +24,7 @@ from .exceptions import (
 from .exporters import BaseExporter, CallbackExporter, CSVExporter, JSONExporter, SQLiteExporter
 from .extractor import InstaExtractor
 from .login import InstaLogin
+from .profile import Profile
 from .proxy import ProxyPool, ProxyState
 from .session_cache import SessionCache
 from .session_pool import Session, SessionPool
@@ -61,4 +62,5 @@ __all__ = [
     "JSONExporter",
     "SQLiteExporter",
     "CallbackExporter",
+    "Profile",
 ]

@@ -232,6 +232,78 @@ class InstaExtractor:
 
     # --- Public API ---
 
+    def get_profile(self, profile_id: str):
+        """
+        Navega ao perfil 1 vez e extrai metadata barato do header
+        (contadores, full_name, verified/private, profile_pic_url).
+
+        Retorna Profile ligado a este extractor — use
+        profile.get_followers() / profile.get_following().
+        """
+        try:
+            from instat.profile import Profile, parse_profile_from_meta
+        except ImportError:
+            from profile import Profile, parse_profile_from_meta
+
+        driver = getattr(self._engine, '_driver', None)
+        if driver is None:
+            raise RuntimeError("get_profile requires a Selenium-based engine")
+
+        url = f"https://www.instagram.com/{profile_id}/"
+        driver.get(url)
+
+        def _meta(prop: str) -> str:
+            try:
+                el = driver.find_element('css selector', f'meta[property="{prop}"]')
+                return el.get_attribute('content') or ''
+            except Exception:
+                return ''
+
+        og_desc = _meta('og:description')
+        og_title = _meta('og:title')
+        og_image = _meta('og:image')
+
+        counts = parse_profile_from_meta(og_desc)
+
+        # og:title: "Full Name (@username) • Instagram photos and videos"
+        full_name = None
+        if og_title:
+            m = re.match(r'^(.*?)\s*\(@', og_title)
+            if m:
+                full_name = m.group(1).strip() or None
+
+        is_verified = None
+        try:
+            is_verified = bool(driver.execute_script(
+                "return !!document.querySelector('svg[aria-label=\"Verified\"]');"
+            ))
+        except Exception:
+            pass
+
+        is_private = None
+        try:
+            is_private = bool(driver.execute_script(
+                "return document.body.innerText.toLowerCase().includes"
+                "('this account is private') || "
+                "document.body.innerText.toLowerCase().includes('conta privada');"
+            ))
+        except Exception:
+            pass
+
+        return Profile(
+            username=profile_id,
+            url=url,
+            full_name=full_name,
+            bio=None,
+            followers_count=counts.get('followers_count'),
+            following_count=counts.get('following_count'),
+            posts_count=counts.get('posts_count'),
+            is_private=is_private,
+            is_verified=is_verified,
+            profile_pic_url=og_image or None,
+            _extractor=self,
+        )
+
     def get_followers(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
         """Returns a list of followers for the given profile id."""
         return self._extract_with_export(profile_id, 'followers', max_duration)

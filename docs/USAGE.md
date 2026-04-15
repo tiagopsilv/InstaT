@@ -32,12 +32,35 @@ InstaExtractor(
 
 | Method | Returns | Notes |
 |---|---|---|
+| `get_profile(profile_id)` | `Profile` | 1 navigation; cheap header metadata + bound extraction methods |
 | `get_followers(profile_id, max_duration=None)` | `list[str]` | Single engine cascade |
 | `get_following(profile_id, max_duration=None)` | `list[str]` | Single engine cascade |
 | `get_both(profile_id, max_duration=None)` | `dict[str, list[str]]` | `{"followers": [...], "following": [...]}` — runs in parallel, httpx cookie-handoff, falls back to 2nd Selenium then sequential |
 | `get_followers_parallel(profile_id, workers=2, accounts=None, stop_threshold=0.98, max_duration=None, headless=True)` | `list[str]` | N browsers union |
 | `get_following_parallel(...)` | `list[str]` | Same for following |
 | `get_total_count(profile_id, list_type)` | `int \| None` | Read counter without extracting |
+
+### `Profile` object
+
+```python
+target = ext.get_profile("tiagopsilv")
+
+target.username          # str
+target.url               # str — canonical profile URL
+target.full_name         # str | None
+target.followers_count   # int | None
+target.following_count   # int | None
+target.posts_count       # int | None
+target.is_private        # bool | None
+target.is_verified       # bool | None
+target.profile_pic_url   # str | None
+
+# Methods (delegate to the extractor that created this Profile)
+target.get_followers(max_duration=None)
+target.get_following(max_duration=None)
+```
+
+Implementation: 1 page load + parse of `og:description`, `og:title`, `og:image` meta tags + 2 quick `execute_script` probes for verified/private. No scroll, no heavy DOM traversal. Attributes that couldn't be parsed are `None`.
 
 `list_type` is `"followers"` or `"following"`.
 

@@ -67,12 +67,21 @@ ext = InstaExtractor(
     engines=["selenium", "httpx"],  # cascade: Selenium → httpx on fail
 )
 
-followers = ext.get_followers("target_profile")
-following = ext.get_following("target_profile")
-print(f"Followers: {len(followers)} | Following: {len(following)}")
+target = ext.get_profile("target_profile")   # 1 page load → cheap metadata
+print(f"@{target.username} · {target.full_name} · "
+      f"{target.followers_count} followers · {target.posts_count} posts")
+
+followers = target.get_followers()
+following = target.get_following()
+print(f"Fetched: {len(followers)} followers | {len(following)} following")
 
 ext.quit()
 ```
+
+`get_profile()` returns a `Profile` with cheap header attributes
+(`full_name`, `followers_count`, `following_count`, `posts_count`,
+`is_private`, `is_verified`, `profile_pic_url`, `url`) and two methods
+(`get_followers()`, `get_following()`) bound to the extractor.
 
 **Credentials via environment (recommended):**
 
