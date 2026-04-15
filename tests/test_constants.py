@@ -1,18 +1,20 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from InstaT.constants import (
-    human_delay,
-    LOGIN_POST_CLICK_DELAY,
-    IGNORE_BUTTON_PRE_CLICK,
+    COOKIE_RESTORE_REFRESH_TIMEOUT,
     DISMISS_MODAL_TIMEOUT,
-    SCROLL_PAUSE,
-    SCROLL_INNER_PAUSE,
-    PROFILE_WAIT_INTERVAL,
     ELEMENT_RETRY_DELAY,
     ELEMENTS_RETRY_WAIT,
     ELEMENTS_RETRY_WAIT_LONG,
+    IGNORE_BUTTON_PRE_CLICK,
+    LOADING_SPINNER_WAIT,
+    LOGIN_POST_CLICK_DELAY,
+    PROFILE_WAIT_INTERVAL,
+    SCROLL_INNER_PAUSE,
+    SCROLL_PAUSE,
     SPINNER_WAIT_TIMEOUT,
+    human_delay,
 )
 
 
@@ -31,6 +33,8 @@ class TestConstants(unittest.TestCase):
             ELEMENTS_RETRY_WAIT,
             ELEMENTS_RETRY_WAIT_LONG,
             SPINNER_WAIT_TIMEOUT,
+            LOADING_SPINNER_WAIT,
+            COOKIE_RESTORE_REFRESH_TIMEOUT,
         ]
         for const in constants:
             self.assertIsInstance(const, (int, float))

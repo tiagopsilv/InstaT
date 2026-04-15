@@ -4,9 +4,9 @@ Persiste progresso em disco a cada N perfis coletados.
 Crash ou bloqueio = retoma de onde parou.
 Checkpoints expiram após 24h.
 """
-from pathlib import Path
 import json
 import time
+from pathlib import Path
 from typing import Optional, Set
 
 

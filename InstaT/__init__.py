@@ -7,22 +7,31 @@ Provides:
 - utils: helper functions for WebDriver operations
 """
 
-from .extractor import InstaExtractor
-from .login import InstaLogin
-from .exceptions import LoginError, ProfileNotFoundError, RateLimitError, AccountBlockedError
-from .constants import human_delay
+from . import backoff, checkpoint, constants, session_cache, utils
+from .async_extractor import AsyncInstaExtractor
 from .backoff import SmartBackoff
 from .checkpoint import ExtractionCheckpoint
+from .constants import human_delay
+from .engines import BaseEngine, EngineManager, HttpxEngine, PlaywrightEngine, SeleniumEngine
+from .exceptions import (
+    AccountBlockedError,
+    AllEnginesBlockedError,
+    BlockedError,
+    LoginError,
+    ProfileNotFoundError,
+    RateLimitError,
+)
+from .exporters import BaseExporter, CallbackExporter, CSVExporter, JSONExporter, SQLiteExporter
+from .extractor import InstaExtractor
+from .login import InstaLogin
+from .proxy import ProxyPool, ProxyState
 from .session_cache import SessionCache
-from . import utils
-from . import constants
-from . import backoff
-from . import checkpoint
-from . import session_cache
+from .session_pool import Session, SessionPool
 
 __all__ = [
     "InstaLogin",
     "InstaExtractor",
+    "AsyncInstaExtractor",
     "LoginError",
     "ProfileNotFoundError",
     "RateLimitError",
@@ -36,4 +45,20 @@ __all__ = [
     "checkpoint",
     "SessionCache",
     "session_cache",
+    "BaseEngine",
+    "EngineManager",
+    "SeleniumEngine",
+    "PlaywrightEngine",
+    "HttpxEngine",
+    "BlockedError",
+    "AllEnginesBlockedError",
+    "ProxyPool",
+    "ProxyState",
+    "SessionPool",
+    "Session",
+    "BaseExporter",
+    "CSVExporter",
+    "JSONExporter",
+    "SQLiteExporter",
+    "CallbackExporter",
 ]

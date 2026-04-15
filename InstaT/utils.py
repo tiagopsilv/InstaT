@@ -1,11 +1,12 @@
-import time
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException, TimeoutException
+from typing import List, Set
+
 from loguru import logger
-from typing import Set, List
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
 # Load selector loader
 try:
     from instat.config.selector_loader import SelectorLoader
@@ -13,9 +14,9 @@ except ImportError:
     from config.selector_loader import SelectorLoader
 
 try:
-    from instat.constants import human_delay, ELEMENT_RETRY_DELAY
+    from instat.constants import ELEMENT_RETRY_DELAY, LOADING_SPINNER_WAIT, human_delay
 except ImportError:
-    from constants import human_delay, ELEMENT_RETRY_DELAY
+    from constants import ELEMENT_RETRY_DELAY, LOADING_SPINNER_WAIT, human_delay
 
 class Utils:
     selectors = SelectorLoader()
@@ -61,11 +62,11 @@ class Utils:
             ignore_button = WebDriverWait(driver, timeout).until(
                 EC.element_to_be_clickable((By.XPATH, Utils.selectors.get("IGNORE_BUTTON")))
             )
-            
+
             if ignore_button:
                 logger.info(f"'Ignorar' button detected. Waiting for {wait_before_click} seconds before clicking.")
                 human_delay(wait_before_click)  # Waiting before clicking
-                
+
                 ignore_button.click()
                 logger.info("Successfully clicked the 'Ignorar' button.")
                 return True
@@ -94,7 +95,27 @@ class Utils:
                 human_delay(ELEMENT_RETRY_DELAY)
         logger.error("Failed to find element after multiple attempts.")
         return None
-    
+
+    @staticmethod
+    def batch_read_text(driver, css_selector: str) -> Set[str]:
+        """Lê texto de todos os elementos que casam o seletor CSS em UMA IPC.
+        Retorna set de strings não-vazias. Mais rápido que iterar .text em Python
+        (N IPCs vira 1)."""
+        try:
+            texts = driver.execute_script(
+                "return Array.from(document.querySelectorAll(arguments[0]))"
+                ".map(e => (e.textContent || '').trim())",
+                css_selector
+            )
+            return {t for t in (texts or []) if t}
+        except Exception as e:
+            logger.debug(f"batch_read_text failed ({e}), falling back to Python loop")
+            try:
+                elems = driver.find_elements(By.CSS_SELECTOR, css_selector)
+                return {el.text.strip() for el in elems if el.text.strip()}
+            except Exception:
+                return set()
+
     @staticmethod
     def find_elements_safe(driver, by, value, max_retries=3, wait_time=0.3):
         for attempt in range(max_retries):
@@ -146,28 +167,26 @@ class Utils:
         Stops early if no new profiles are detected.
         """
         logger.debug("Starting wait loop for new profiles based on actual content change.")
-        
+
         while True:
             try:
 
-                # First: if loading spinner exists, wait for it to disappear
+                # Check if spinner exists before waiting (fast sync check).
+                # Avoids burning LOADING_SPINNER_WAIT seconds when no spinner is present.
                 try:
-                    # Wait until the loading spinner (aria-label="Carregando...") disappears
-                    WebDriverWait(driver, 5).until_not(
-                        EC.presence_of_element_located((By.XPATH, Utils.selectors.get("LOADING_SPINNER")))
-                    )
-                    logger.debug("Loading spinner has disappeared, page is ready.")
+                    spinner_xpath = Utils.selectors.get("LOADING_SPINNER")
+                    has_spinner = len(driver.find_elements(By.XPATH, spinner_xpath)) > 0
+                    if has_spinner:
+                        WebDriverWait(driver, LOADING_SPINNER_WAIT).until_not(
+                            EC.presence_of_element_located((By.XPATH, spinner_xpath))
+                        )
+                        logger.debug("Loading spinner has disappeared, page is ready.")
                 except TimeoutException:
                     logger.debug("Timeout waiting for loading spinner to disappear. Proceeding anyway.")
+                except Exception as e:
+                    logger.debug(f"Spinner check failed silently: {e}")
 
-                profile_elements = Utils.find_elements_safe(
-                    driver,
-                    By.CSS_SELECTOR,
-                    profile_selector,
-                    max_retries=2,
-                    wait_time=0.7
-                )
-                current_profiles_snapshot = {el.text.strip() for el in profile_elements if el.text.strip()}
+                current_profiles_snapshot = Utils.batch_read_text(driver, profile_selector)
 
                 # Check if any new profiles have appeared
                 if not current_profiles_snapshot.issubset(existing_profiles):
@@ -189,14 +208,7 @@ class Utils:
                 human_delay(wait_interval)
 
                 # No update, break out
-                profile_elements_after_scroll = Utils.find_elements_safe(
-                    driver,
-                    By.CSS_SELECTOR,
-                    profile_selector,
-                    max_retries=2,
-                    wait_time=0.7
-                )
-                snapshot_after_scroll = {el.text.strip() for el in profile_elements_after_scroll if el.text.strip()}
+                snapshot_after_scroll = Utils.batch_read_text(driver, profile_selector)
                 if snapshot_after_scroll.issubset(existing_profiles):
                     logger.debug("No new profiles detected after scroll. Breaking loop.")
                     break
@@ -205,7 +217,7 @@ class Utils:
                 logger.warning("StaleElementReferenceException encountered during profile extraction. Retrying...")
 
         logger.debug(f"No profiles found during loop. Performing final scrolling ({additional_scroll_attempts} attempts).")
-        
+
     @staticmethod
     def dismiss_save_login_modal(driver: WebDriver, close_keywords: List[str], timeout: int = 6) -> bool:
         """

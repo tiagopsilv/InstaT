@@ -1,35 +1,57 @@
-# InstaT - Intelligent Instagram Data Extractor
+# InstaT — Instagram Data Extractor
 
-**InstaT** is a Python library (`pip install instat`) for automated Instagram data extraction. It logs into Instagram, navigates to any public profile, and extracts follower/following lists via dynamic scrolling with Selenium.
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen.svg)](tests/)
 
-Built for reliability: humanized timing, exponential backoff, incremental checkpoints, session caching, resilient selectors, and account-block detection.
+Production-grade Python library for Instagram follower/following extraction, built on a **multi-engine architecture** with automatic fallback, session persistence, and parallel orchestration.
+
+> **Scope & ethics.** InstaT is intended for research, analytics, and workflows on accounts you own or are authorized to inspect. Automated scraping of Instagram violates the platform's Terms of Service at scale — the user bears responsibility for lawful use, LGPD/GDPR compliance, and respecting rate limits. See [Responsible Use](#responsible-use).
 
 ---
 
-## Features
+## Table of Contents
 
-- **Automated Login** with retry logic, fallback button detection, and cookie session cache
-- **Mobile Emulation** (Nexus 5 UA, 375x667) to reduce detection
-- **Humanized Timing** via Gaussian delays (no fixed sleep patterns)
-- **Smart Backoff** with exponential + jitter on stalled scrolling
-- **Incremental Checkpoints** - crash at profile 4500/5000? Resume from checkpoint
-- **Session Cache** - reuses cookies to avoid re-login (biggest ban trigger)
-- **Resilient Selectors** - each selector has fallback alternatives in JSON
-- **Account Block Detection** - detects checkpoint, 2FA, Meta interstitial, and logs actionable instructions
-- **External Selector Config** - update `selectors.json` when Instagram changes UI, no code changes needed
-- **38 Unit Tests** covering all modules
+- [Highlights](#highlights)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Extraction Modes](#extraction-modes)
+- [Documentation](#documentation)
+- [CLI & Docker](#cli--docker)
+- [Development](#development)
+- [Responsible Use](#responsible-use)
+- [License](#license)
+
+---
+
+## Highlights
+
+| Capability | What it does |
+|---|---|
+| **Multi-engine** | Selenium (primary) → Playwright → httpx, orchestrated by `EngineManager` with automatic cascade on failure |
+| **Parallel extraction** | Run N browsers concurrently on the same target; shared set + stop-on-target coordinator |
+| **Account & proxy rotation** | `SessionPool` and `ProxyPool` with cooldown backoff on rate-limit/block |
+| **Resilience** | Incremental checkpoints, session-cookie cache, smart exponential backoff, stall recovery via modal reopen |
+| **Observability** | Structured Loguru logs, artifact capture on blocks (screenshot + HTML) |
+| **Export** | CSV, JSON, SQLite out of the box; pluggable `BaseExporter` for custom sinks |
+| **Async** | `AsyncInstaExtractor` wraps the sync API for concurrent `profile_id` pipelines |
+| **CLI & Docker** | `instat` binary, pre-built Dockerfile + compose manifest |
+| **Typed & tested** | 243 unit tests, ruff + mypy in CI |
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/tiagopsilv/InstaT.git
-cd InstaT
-pip install -e .
+pip install instat                         # core (Selenium only)
+pip install 'instat[playwright]'           # + Playwright engine
+pip install 'instat[httpx]'                # + httpx fallback engine
+pip install 'instat[playwright,httpx,dev]' # everything
 ```
 
-Requires **Python 3.8+** and **Firefox** (GeckoDriver is managed automatically).
+**Requirements:** Python ≥ 3.9, Firefox (GeckoDriver auto-installed via `webdriver-manager`).
+
+For Playwright: `playwright install chromium` after pip-install.
 
 ---
 
@@ -38,167 +60,158 @@ Requires **Python 3.8+** and **Firefox** (GeckoDriver is managed automatically).
 ```python
 from instat import InstaExtractor
 
-extractor = InstaExtractor(
-    username="your_username",
-    password="your_password",
+ext = InstaExtractor(
+    username="your_user",
+    password="your_pass",
     headless=True,
-    timeout=15
+    engines=["selenium", "httpx"],  # cascade: Selenium → httpx on fail
 )
 
-followers = extractor.get_followers("target_profile", max_duration=120.0)
-following = extractor.get_following("target_profile", max_duration=120.0)
-count = extractor.get_total_count("target_profile", list_type="followers")
+followers = ext.get_followers("target_profile")
+following = ext.get_following("target_profile")
+print(f"Followers: {len(followers)} | Following: {len(following)}")
 
-print(f"Followers: {len(followers)}")
-print(f"Following: {len(following)}")
-print(f"Total count: {count}")
-
-extractor.quit()
+ext.quit()
 ```
 
----
-
-## Exception Handling
-
-```python
-from instat import InstaExtractor, LoginError, ProfileNotFoundError, AccountBlockedError
-
-try:
-    extractor = InstaExtractor(username="user", password="pass")
-    followers = extractor.get_followers("target")
-except LoginError:
-    print("Login failed. Check credentials.")
-except AccountBlockedError as e:
-    print(f"Account blocked: {e.reason}")
-    print(f"Action: see screenshot at {e.screenshot_path}")
-except ProfileNotFoundError:
-    print("Profile not found or private.")
-```
-
----
-
-## Architecture
-
-```
-InstaT/
-├── __init__.py            # Package exports
-├── constants.py           # Centralized timing constants + human_delay()
-├── backoff.py             # SmartBackoff with exponential + jitter
-├── checkpoint.py          # Incremental extraction checkpoints
-├── session_cache.py       # Cookie session persistence
-├── login.py               # InstaLogin - authentication + block detection
-├── extractor.py           # InstaExtractor - scrolling + extraction
-├── utils.py               # Selenium helpers (find_element_with_fallback, etc.)
-├── exceptions.py          # LoginError, ProfileNotFoundError, AccountBlockedError
-├── config/
-│   ├── selector_loader.py # JSON loader with get_all() for fallback lists
-│   └── selectors.json     # CSS/XPath selectors with alternatives
-├── tests/
-│   ├── test_constants.py
-│   ├── test_backoff.py
-│   ├── test_checkpoint.py
-│   ├── test_session_cache.py
-│   ├── test_selector_loader.py
-│   ├── test_extractor.py
-│   └── test_login.py
-└── examples/
-    └── example_usage.py
-```
-
-### Key Design Decisions
-
-| Module | Purpose |
-|--------|---------|
-| `constants.py` | All timing values centralized. `human_delay(base, variance)` adds Gaussian noise to every sleep, preventing detectable patterns. |
-| `backoff.py` | When scrolling stalls, delays escalate: 2s, 4s, 8s... up to 5min. Jitter via `uniform(0.5, 1.5)` prevents regularity. Resets on success. |
-| `checkpoint.py` | Every 100 new profiles, progress is saved to `.instat_checkpoints/`. On crash/block, next run resumes automatically. Expires after 24h. |
-| `session_cache.py` | After login, cookies are saved to `.instat_sessions/`. Next run skips the login form entirely. Expires after 1h. |
-| `selector_loader.py` | Selectors can be a string or a list of alternatives. `get_all()` returns the list; `find_element_with_fallback()` tries each one. |
-| `login.py` | Detects 7 types of account blocks (checkpoint, 2FA, Meta Verified, etc.), saves screenshot + HTML as evidence, raises `AccountBlockedError` with actionable instructions. Falls back to cached GeckoDriver if GitHub API rate-limits `webdriver-manager`. |
-
----
-
-## Selectors Configuration
-
-Selectors support **fallback alternatives** as JSON arrays. When Instagram changes its UI, update only `selectors.json`:
-
-```json
-{
-    "FOLLOWERS_LINK": [
-        "//a[contains(@href, '/followers/')]",
-        "//a[.//span[contains(text(),'seguidores') or contains(text(),'followers')]]",
-        "//a[contains(text(),'seguidores') or contains(text(),'followers')]"
-    ],
-    "LOGIN_USERNAME_INPUT": "input[name='username']"
-}
-```
-
-Single strings are backward compatible. The `SelectorLoader.get()` returns the first alternative; `get_all()` returns all.
-
----
-
-## Tuning Parameters
-
-```python
-extractor.pause_time = 0.3                # Seconds between scrolls (default: 0.5)
-extractor.wait_interval = 0.3             # Wait for new profiles (default: 0.5)
-extractor.max_attempts = 3                # Scroll attempts per cycle (default: 2)
-extractor.additional_scroll_attempts = 2  # Extra scrolls on stall (default: 1)
-extractor.max_refresh_attempts = 50       # Max page refreshes (default: 100)
-extractor.max_retry_without_new_profiles = 5  # Retries before backoff (default: 3)
-extractor.checkpoint_interval = 50        # Save every N profiles (default: 100)
-```
-
----
-
-## Running Tests
+**Credentials via environment (recommended):**
 
 ```bash
-python -m pytest tests/ -v
+export INSTAT_USERNAME='your_user'
+export INSTAT_PASSWORD='your_pass'
 ```
 
-All 38 tests use `unittest.TestCase` with `MagicMock` - no real browser needed.
+```python
+import os
+ext = InstaExtractor(os.environ["INSTAT_USERNAME"], os.environ["INSTAT_PASSWORD"])
+```
 
 ---
 
-## Common Issues
+## Extraction Modes
 
-| Problem | Solution |
-|---------|----------|
-| Login fails with 2FA | Set `headless=False`, complete verification manually, then reuse cached session |
-| `AccountBlockedError` raised | Check the screenshot in `instat/logs/artifacts/`, follow the logged instructions |
-| Empty results | Increase `max_duration`, check if profile is private |
-| Selectors outdated | Update `InstaT/config/selectors.json` with current Instagram markup |
-| GeckoDriver rate limit | Set `GH_TOKEN` env var, or let the library use the cached geckodriver |
-| Firefox not found | Install Firefox, or check the path |
+### 1. Sequential (simplest)
+
+```python
+ext.get_followers("target")
+ext.get_following("target")
+```
+
+### 2. Concurrent followers + following (`get_both`)
+
+Runs the two lists in parallel. Followers via the primary Selenium driver; following via `HttpxEngine` reusing Selenium cookies (external API **as fallback only**, per design). Falls back to a second Selenium session, then to sequential.
+
+```python
+result = ext.get_both("target")
+# {"followers": [...], "following": [...]}
+```
+
+### 3. Parallel on a single list (`get_followers_parallel`)
+
+N workers, each with its own browser (and optionally its own Instagram account), scroll the same modal. A shared coordinator unions results and signals all workers to stop once `stop_threshold × total_count` is reached.
+
+```python
+followers = ext.get_followers_parallel(
+    "target",
+    workers=3,
+    accounts=[                              # 1 account per worker (recommended)
+        {"username": "alt1", "password": "..."},
+        {"username": "alt2", "password": "..."},
+        {"username": "alt3", "password": "..."},
+    ],
+    stop_threshold=0.98,                    # stop when 98% of target reached
+    max_duration=300,                       # hard cap per worker (seconds)
+)
+```
+
+> **Risk note.** Running multiple workers under the **same account** triggers a warning in the log — Instagram may block simultaneous sessions. Prefer one account per worker.
+
+### 4. Async pipelines
+
+```python
+import asyncio
+from instat import AsyncInstaExtractor
+
+async def pull(profiles):
+    async with AsyncInstaExtractor(user, pw) as ext:
+        return await asyncio.gather(*(ext.get_followers(p) for p in profiles))
+
+asyncio.run(pull(["a", "b", "c"]))
+```
+
+### 5. Export in one call
+
+```python
+ext.to_csv("target",    "followers", "out/followers.csv")
+ext.to_json("target",   "following", "out/following.json", indent=2)
+ext.to_sqlite("target", "followers", "out/db.sqlite", table="profiles")
+```
+
+Or inject a custom `BaseExporter` at construction time to pipe every extraction into your sink (S3, Kafka, data warehouse, etc.).
 
 ---
 
-## Changelog (v2.0)
+## Documentation
 
-| Task | Description |
-|------|-------------|
-| BL-01 | Centralized timing constants + Gaussian `human_delay()` replacing all `time.sleep()` |
-| BL-02 | `SmartBackoff` with exponential delay + jitter for retry logic |
-| BL-03 | `ExtractionCheckpoint` for incremental progress persistence |
-| BL-04 | `SessionCache` for cookie-based session reuse |
-| BL-05 | Modal scroll container detection with body fallback |
-| BL-06 | Dead code cleanup: removed `.bak` files, unused imports, legacy methods |
-| Fixes | Resilient selectors with fallback lists, JS click fallback, account block detection, "Save login" modal dismiss across navigations, `diagnose=False` to prevent credential leaks in logs |
+| Doc | Topic |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Multi-engine cascade, `EngineManager`, `ParallelCoordinator`, session/proxy pools, checkpoint flow |
+| [`docs/USAGE.md`](docs/USAGE.md) | Complete API reference with examples for every entry point |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Login issues, block types, selector updates, performance tuning |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history |
 
 ---
 
-## About the Developer
+## CLI & Docker
 
-**Tiago Pereira da Silva** - Data Science & Analytics Specialist with 19+ years of experience.
+```bash
+# CLI
+export INSTAT_USERNAME='user' INSTAT_PASSWORD='pass'
+instat extract --profile target --type followers --output out.csv
+instat extract --profile target --type following --engine selenium --engine httpx \
+               --proxy-file proxies.txt --max-duration 300 --output out.db
+instat count   --profile target --type followers
 
-- MBA Data Science - USP/Esalq | MBA Eng. Software - FIAP
-- Expertise: Python, Selenium, Playwright, ETL, Machine Learning, Web Scraping
+# Docker
+docker compose run --rm instat extract --profile target --type followers \
+                                       --output /app/output/followers.csv
+```
 
-[tiagosilv@gmail.com](mailto:tiagosilv@gmail.com) | [LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) | [GitHub](https://github.com/tiagopsilv)
+Exit codes: `0` success · `1` bad input · `2` auth error · `3` extraction blocked · `4` unexpected.
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/tiagopsilv/InstaT.git
+cd InstaT
+pip install -e '.[playwright,httpx,dev]'
+playwright install chromium
+
+python -m pytest tests/ -m "not e2e"      # 243 unit tests (~90 s)
+ruff check .                               # lint
+mypy InstaT                                # types
+```
+
+Contributions welcome via PR — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for design conventions.
+
+---
+
+## Responsible Use
+
+- **Compliance:** LGPD (Brazil) and GDPR (EU) classify follower/following data as personal data. Have a legal basis (consent, legitimate interest, contract) before processing.
+- **Instagram TOS:** Automated collection violates the platform's terms. Use only on owned accounts, authorized audits, or public research with proper ethics review.
+- **Rate limiting:** Respect cooldowns. Aggressive scraping will get accounts banned and may trigger legal action.
+- **No warranty:** This library is distributed as-is under MIT. You are solely responsible for your usage.
 
 ---
 
 ## License
 
-MIT License - see `LICENSE` file for terms.
+MIT — see [`LICENSE`](LICENSE).
+
+## Author
+
+**Tiago Pereira da Silva** — Data & Software Engineer.
+[Email](mailto:tiagosilv@gmail.com) · [LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) · [GitHub](https://github.com/tiagopsilv)

@@ -1,5 +1,5 @@
-import unittest
 import json
+import unittest
 from unittest.mock import mock_open, patch
 
 from instat.config.selector_loader import SelectorLoader

@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from selenium.common.exceptions import TimeoutException
 
 from instat.login import InstaLogin

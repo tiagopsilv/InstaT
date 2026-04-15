@@ -1,7 +1,8 @@
 import json
-import os
 import logging
-from typing import List, Optional
+import os
+from typing import List
+
 
 class SelectorLoader:
     """

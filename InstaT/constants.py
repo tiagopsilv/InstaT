@@ -23,6 +23,10 @@ ELEMENTS_RETRY_WAIT = 0.3           # utils.py: wait_time default em find_elemen
 ELEMENTS_RETRY_WAIT_LONG = 0.7      # utils.py: wait_time em wait_for_new_profiles
 SPINNER_WAIT_TIMEOUT = 5            # utils.py: WebDriverWait para spinner desaparecer
 
+# === Performance (PERF-01) ===
+LOADING_SPINNER_WAIT = 1.0          # utils.py: max wait para spinner desaparecer (antes: 5.0)
+COOKIE_RESTORE_REFRESH_TIMEOUT = 5  # login.py: timeout após refresh no session restore
+
 
 def human_delay(base: float, variance: float = 0.3) -> float:
     """

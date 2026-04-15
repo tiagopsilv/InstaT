@@ -19,3 +19,11 @@ class AccountBlockedError(Exception):
         self.reason = reason
         self.url = url
         self.screenshot_path = screenshot_path
+
+class BlockedError(Exception):
+    """Instagram bloqueou esta engine/sessão."""
+    pass
+
+class AllEnginesBlockedError(Exception):
+    """Todas as engines foram bloqueadas."""
+    pass

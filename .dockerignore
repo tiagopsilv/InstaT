@@ -1,0 +1,37 @@
+# VCS
+.git
+.github
+.gitignore
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+build
+dist
+.venv
+venv
+env
+
+# Tests
+tests
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Runtime artifacts
+.instat_checkpoints
+.instat_sessions
+InstaT/logs
+instat/logs
+
+# IDE
+.idea
+.vscode
+.DS_Store
+
+# Env & secrets
+.env
+*.env
+secrets/

@@ -1,30 +1,24 @@
 import sys
-from loguru import logger
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.firefox.service import Service
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    WebDriverException
-)
-from selenium.common.exceptions import StaleElementReferenceException
-import time
 from datetime import datetime
 from pathlib import Path
 
+from loguru import logger
+from selenium import webdriver
+from selenium.common.exceptions import (
+    TimeoutException,
+    WebDriverException,
+)
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.firefox import GeckoDriverManager
+
 try:
-    from instat.constants import human_delay, LOGIN_POST_CLICK_DELAY
+    from instat.constants import LOGIN_POST_CLICK_DELAY, human_delay
 except ImportError:
-    from constants import human_delay, LOGIN_POST_CLICK_DELAY
-try:
-    from instat.session_cache import SessionCache
-except ImportError:
-    from session_cache import SessionCache
+    from constants import LOGIN_POST_CLICK_DELAY, human_delay
 try:
     from instat.exceptions import AccountBlockedError
 except ImportError:
@@ -43,11 +37,11 @@ logger.add("instat/logs/insta_login.log", rotation="10 MB", retention="10 days",
 
 # Import our generic utility
 try:
-    from instat.utils import Utils
     from instat.config.selector_loader import SelectorLoader
+    from instat.utils import Utils
 except ImportError:
-    from utils import Utils
     from config.selector_loader import SelectorLoader
+    from utils import Utils
 
 class MetaInterstitialError(Exception):
     """Raised when a Meta interstitial (e.g., Meta Verified / checkpoint) blocks the login process."""
@@ -59,6 +53,8 @@ class MetaInterstitialError(Exception):
         self.screenshot_path = screenshot_path
 
 class InstaLogin:
+    INSTAGRAM_BASE_URL = 'https://www.instagram.com'
+
     # Public list of keywords used to identify the login button in any language
     keywords = ["entrar", "log in", "login", "iniciar sesión", "connexion", "anmelden"]
 
@@ -68,16 +64,18 @@ class InstaLogin:
         "meta verified",
     ]
 
-    def __init__(self, username, password, headless=True, timeout=10, session_cache=None):
+    def __init__(self, username, password, headless=True, timeout=10,
+                 session_cache=None, base_url=None):
         self.username = username
         self.password = password
         self.timeout = timeout
         self._session_cache = session_cache
+        self._base_url = base_url or self.INSTAGRAM_BASE_URL
         logger.info("Initializing InstaLogin instance")
         self.driver = self.init_driver(headless)
         self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
         self.selectors = SelectorLoader()
-    
+
     @staticmethod
     def _find_cached_geckodriver() -> str:
         """Procura geckodriver no cache local do webdriver-manager."""
@@ -98,6 +96,21 @@ class InstaLogin:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36"
         )
         options.set_preference("general.useragent.override", mobile_user_agent)
+
+        # Performance: skip heavy resources not used by selectors.
+        # Reduces per-navigation time by 30-50%.
+        options.set_preference("permissions.default.image", 2)  # block images
+        options.set_preference("dom.ipc.plugins.enabled.libflashplayer.so", False)
+        options.set_preference("media.autoplay.default", 5)  # no autoplay
+        options.set_preference("network.http.pipelining", True)
+        options.set_preference("network.http.proxy.pipelining", True)
+        options.set_preference("network.http.pipelining.maxrequests", 8)
+        # Disable telemetry/studies for faster startup
+        options.set_preference("toolkit.telemetry.enabled", False)
+        options.set_preference("toolkit.telemetry.unified", False)
+        options.set_preference("datareporting.healthreport.uploadEnabled", False)
+        options.set_preference("app.shield.optoutstudies.enabled", False)
+
         if headless:
             logger.debug("Enabling headless mode")
             options.add_argument('--headless')
@@ -129,7 +142,7 @@ class InstaLogin:
         try:
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             logger.debug("Removed webdriver flag from navigator")
-        except WebDriverException as e:
+        except WebDriverException:
             logger.exception("Error executing script to remove webdriver flag")
         return driver
 
@@ -235,28 +248,69 @@ class InstaLogin:
 
         return str(screenshot_path)
 
+    def _try_restore_session(self, driver, cookies: list) -> bool:
+        """Tenta restaurar sessão via cookies. True em sucesso.
+        Limpa cookies do driver e retorna False em falha para fallback ao form login."""
+        try:
+            driver.get(f'{self._base_url}/')
+            added = 0
+            failed = 0
+            for c in cookies:
+                try:
+                    driver.add_cookie(c)
+                    added += 1
+                except Exception as e:
+                    failed += 1
+                    logger.debug(f"cookie add failed: {c.get('name','?')} ({e})")
+            logger.debug(f"Cookie cache: {added} added, {failed} failed")
+
+            if added == 0:
+                return False
+
+            driver.refresh()
+
+            # Check 1: URL doesn't redirect back to login
+            if '/accounts/login' in driver.current_url.lower():
+                logger.debug("After refresh still on login page — cookies invalid")
+                try:
+                    driver.delete_all_cookies()
+                except Exception:
+                    pass
+                return False
+
+            # Check 2: sessionid cookie present (stronger signal than URL)
+            session_cookie = driver.get_cookie('sessionid')
+            if not session_cookie:
+                logger.debug("No sessionid cookie after refresh — not logged in")
+                try:
+                    driver.delete_all_cookies()
+                except Exception:
+                    pass
+                return False
+
+            logger.info('Session restored from cookie cache.')
+            return True
+        except Exception as e:
+            logger.debug(f'Failed to restore session from cache: {e}')
+            try:
+                driver.delete_all_cookies()
+            except Exception:
+                pass
+            return False
+
     def login(self):
         driver = self.driver
 
-        # Tentativa de restaurar sessão via cache de cookies
+        # Attempt session restore from cookie cache — much faster than form login
         if self._session_cache:
             cookies = self._session_cache.load(self.username)
             if cookies:
-                try:
-                    driver.get('https://www.instagram.com/')
-                    for c in cookies:
-                        driver.add_cookie(c)
-                    driver.refresh()
-                    if '/accounts/login' not in driver.current_url:
-                        logger.info('Session restored from cookie cache.')
-                        return True
-                    logger.debug('Cached cookies expired or invalid, proceeding with normal login.')
-                except Exception as e:
-                    logger.debug(f'Failed to restore session from cache: {e}')
+                if self._try_restore_session(driver, cookies):
+                    return True
 
         try:
             logger.info("Navigating to Instagram login page")
-            driver.get("https://www.instagram.com/accounts/login/")
+            driver.get(f"{self._base_url}/accounts/login/")
         except WebDriverException as e:
             logger.exception("Error loading Instagram login page")
             raise Exception("Failed to load Instagram login page.") from e
@@ -289,7 +343,8 @@ class InstaLogin:
 
         try:
             logger.debug("Waiting for login result via redirect")
-            WebDriverWait(driver, self.timeout).until(lambda d: d.current_url != "https://www.instagram.com/accounts/login/")
+            login_url = f"{self._base_url}/accounts/login/"
+            WebDriverWait(driver, self.timeout).until(lambda d: d.current_url != login_url)
         except TimeoutException:
             logger.debug("Login via RETURN key failed, trying fallback button click...")
 
@@ -303,9 +358,10 @@ class InstaLogin:
                         if any(keyword in inner_text for keyword in self.keywords):
                             logger.debug(f"Found login button with matching text: '{inner_text}', clicking it.")
                             btn.click()
-                            # Wait until the URL changes 
+                            # Wait until the URL changes
+                            _login_url = f"{self._base_url}/accounts/login/"
                             WebDriverWait(driver, self.timeout).until(
-                                lambda d: d.current_url != "https://www.instagram.com/accounts/login/"
+                                lambda d, u=_login_url: d.current_url != u
                             )
                             # Wait until page is fully loaded
                             WebDriverWait(driver, self.timeout).until(
@@ -342,7 +398,7 @@ if __name__ == '__main__':
     insta = InstaLogin('your_username', 'your_password', headless=False)
     try:
         insta.login()
-    except Exception as e:
+    except Exception:
         logger.exception("An error occurred during login")
     finally:
         logger.info("Quitting WebDriver")

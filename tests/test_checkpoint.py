@@ -1,5 +1,5 @@
-import unittest
 import tempfile
+import unittest
 from unittest.mock import patch
 
 from InstaT.checkpoint import ExtractionCheckpoint

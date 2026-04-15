@@ -1,7 +1,8 @@
-import unittest
 import sys
 import time
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import MagicMock, patch
+
 from loguru import logger
 
 from instat.extractor import InstaExtractor
@@ -24,10 +25,13 @@ class TestInstaExtractor(unittest.TestCase):
         cls.valid_password = "your_password"
         cls.profile_id = "tiagopsilv"
 
-        # Mock InstaLogin to avoid real Instagram login
+        # Mock InstaLogin to avoid real Instagram login.
+        # InstaExtractor imports InstaLogin at module level and passes it to SeleniumEngine,
+        # so patching 'instat.extractor.InstaLogin' propagates through the engine.
         with patch('instat.extractor.InstaLogin') as MockLogin:
             cls.mock_login_instance = MockLogin.return_value
             cls.mock_login_instance.driver = MagicMock()
+            cls.mock_login_instance.close_keywords = ["not now", "save"]
             cls.extractor = InstaExtractor(cls.username, cls.valid_password, headless=True)
 
         # Adjust parameters for faster test execution
@@ -66,32 +70,19 @@ class TestInstaExtractor(unittest.TestCase):
                 with self.assertRaises((ValueError, AttributeError)):
                     self.extractor.parse_count_text(input_text)
 
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=['user1', 'user2'])
-    @patch('instat.extractor.InstaExtractor._click_link_element', return_value=True)
-    @patch('instat.extractor.InstaExtractor._navigate_and_get_link')
-    def test_get_followers_mocked(self, mock_nav, mock_click, mock_get_profiles):
-        mock_link = MagicMock()
-        mock_link.text = "404\nfollowers"
-        mock_nav.return_value = mock_link
+    @patch('instat.engines.engine_manager.EngineManager.extract', return_value=['user1', 'user2'])
+    def test_get_followers_mocked(self, mock_extract):
         followers = self.extractor.get_followers(self.profile_id)
         self.assertEqual(followers, ['user1', 'user2'])
-        mock_nav.assert_called()
-        mock_get_profiles.assert_called_once()
+        mock_extract.assert_called_once()
 
-    @patch('instat.extractor.InstaExtractor._navigate_and_get_link', return_value=None)
-    def test_get_followers_nav_failure(self, mock_nav):
+    @patch('instat.engines.engine_manager.EngineManager.extract', return_value=[])
+    def test_get_followers_returns_empty(self, mock_extract):
         followers = self.extractor.get_followers(self.profile_id)
-        self.assertEqual(followers, [], "Expected empty list when navigation fails.")
+        self.assertEqual(followers, [], "Expected empty list when engine returns nothing.")
 
-    @patch('instat.extractor.InstaExtractor.get_profiles', return_value=[])
-    def test_max_duration_enforcement(self, mock_get_profiles):
-        start_time = time.perf_counter()
-        result = self.extractor.get_profiles(100, max_duration=1)
-        duration = time.perf_counter() - start_time
-        self.assertLessEqual(duration, 1.5, "Duration exceeded max_duration significantly.")
-
-    @patch('instat.extractor.InstaExtractor._navigate_and_get_link', return_value=None)
-    def test_handle_invalid_profile(self, mock_nav):
+    @patch('instat.engines.engine_manager.EngineManager.extract', return_value=[])
+    def test_handle_invalid_profile(self, mock_extract):
         result = self.extractor.get_followers("invalid_profile")
         self.assertEqual(result, [], "Expected empty list for invalid profile.")
 
@@ -99,6 +90,15 @@ class TestInstaExtractor(unittest.TestCase):
         with patch.object(self.extractor.driver, 'quit') as mock_quit:
             self.extractor.quit()
             mock_quit.assert_called_once()
+
+    def test_configurable_attributes_delegate_to_engine(self):
+        self.extractor.pause_time = 0.99
+        self.assertEqual(self.extractor._engine.pause_time, 0.99)
+        self.extractor.wait_interval = 0.88
+        self.assertEqual(self.extractor._engine.wait_interval, 0.88)
+        # Reset
+        self.extractor.pause_time = 0.05
+        self.extractor.wait_interval = 0.05
 
 
 if __name__ == '__main__':

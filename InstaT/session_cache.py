@@ -4,10 +4,10 @@ Persiste cookies em disco para reutilizar sessão sem re-login.
 Re-login frequente é o maior gatilho de bloqueio do Instagram.
 Cookies válidos por max_age (default 1h).
 """
-from pathlib import Path
 import json
 import time
-from typing import Optional, List
+from pathlib import Path
+from typing import List, Optional
 
 
 class SessionCache:

@@ -1,6 +1,6 @@
-import unittest
 import tempfile
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import MagicMock, patch
 
 from InstaT.session_cache import SessionCache
 

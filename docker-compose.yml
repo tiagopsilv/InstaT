@@ -1,0 +1,14 @@
+services:
+  instat:
+    build: .
+    image: instat:latest
+    volumes:
+      - ./output:/app/output
+      - ./checkpoints:/app/.instat_checkpoints
+      - ./sessions:/app/.instat_sessions
+    environment:
+      - INSTAT_USERNAME
+      - INSTAT_PASSWORD
+    # Override CMD per invocation:
+    # docker compose run instat extract --profile X --type followers \
+    #   --output /app/output/followers.csv

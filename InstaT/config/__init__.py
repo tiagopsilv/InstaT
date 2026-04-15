@@ -7,7 +7,7 @@ Provides:
 """
 
 import os
-import json
+
 from .selector_loader import SelectorLoader
 
 DEFAULT_SELECTORS_PATH = os.path.join(os.path.dirname(__file__), "selectors.json")
