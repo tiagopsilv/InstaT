@@ -8,9 +8,11 @@ Provides:
 """
 
 from . import backoff, checkpoint, constants, session_cache, utils
+from .async_extractor import AsyncInstaExtractor  # last: depends on extractor + exporters
 from .backoff import SmartBackoff
 from .checkpoint import ExtractionCheckpoint
 from .constants import human_delay
+from .engines import BaseEngine, EngineManager, HttpxEngine, PlaywrightEngine, SeleniumEngine
 from .exceptions import (
     AccountBlockedError,
     AllEnginesBlockedError,
@@ -20,13 +22,11 @@ from .exceptions import (
     RateLimitError,
 )
 from .exporters import BaseExporter, CallbackExporter, CSVExporter, JSONExporter, SQLiteExporter
-from .session_cache import SessionCache
-from .login import InstaLogin
-from .engines import BaseEngine, EngineManager, HttpxEngine, PlaywrightEngine, SeleniumEngine
 from .extractor import InstaExtractor
+from .login import InstaLogin
 from .proxy import ProxyPool, ProxyState
+from .session_cache import SessionCache
 from .session_pool import Session, SessionPool
-from .async_extractor import AsyncInstaExtractor  # last: depends on extractor + exporters
 
 __all__ = [
     "InstaLogin",

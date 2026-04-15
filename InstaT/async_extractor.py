@@ -29,12 +29,8 @@ profile conforme exemplo acima.
 import asyncio
 from typing import Dict, List, Optional
 
-try:
-    from instat.exporters import BaseExporter
-    from instat.extractor import InstaExtractor
-except ImportError:  # pragma: no cover
-    from exporters import BaseExporter  # type: ignore
-    from extractor import InstaExtractor  # type: ignore
+from .exporters import BaseExporter
+from .extractor import InstaExtractor
 
 
 class AsyncInstaExtractor:
