@@ -4,7 +4,7 @@ from unittest.mock import patch
 from instat.backoff import SmartBackoff
 
 
-@patch("InstaT.backoff.human_delay", return_value=1.0)
+@patch("instat.backoff.human_delay", return_value=1.0)
 class TestSmartBackoff(unittest.TestCase):
 
     def test_wait_increments_attempt(self, mock_hd):

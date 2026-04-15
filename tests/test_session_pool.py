@@ -131,21 +131,21 @@ class TestEngineManagerSessionPool(unittest.TestCase):
 
     def test_engine_manager_stores_session_pool(self):
         from instat.engines.engine_manager import EngineManager
-        from tests.test_engine_manager import MockEngine
+        from .test_engine_manager import MockEngine
         sp = SessionPool([{'username': 'a', 'password': 'p'}])
         mgr = EngineManager([MockEngine('m1')], session_pool=sp)
         self.assertIs(mgr._session_pool, sp)
 
     def test_engine_manager_default_no_session_pool(self):
         from instat.engines.engine_manager import EngineManager
-        from tests.test_engine_manager import MockEngine
+        from .test_engine_manager import MockEngine
         mgr = EngineManager([MockEngine('m1')])
         self.assertIsNone(mgr._session_pool)
 
     def test_engine_manager_accepts_both_pools(self):
         from instat.engines.engine_manager import EngineManager
         from instat.proxy import ProxyPool
-        from tests.test_engine_manager import MockEngine
+        from .test_engine_manager import MockEngine
         pool = ProxyPool(['http://p1:8080'])
         sp = SessionPool([{'username': 'a', 'password': 'p'}])
         mgr = EngineManager([MockEngine('m1')], proxy_pool=pool, session_pool=sp)

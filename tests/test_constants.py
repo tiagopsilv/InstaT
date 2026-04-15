@@ -44,41 +44,41 @@ class TestConstants(unittest.TestCase):
 class TestHumanDelay(unittest.TestCase):
     """Tests for the human_delay() function."""
 
-    @patch("InstaT.constants.time.sleep")
-    @patch("InstaT.constants.random.gauss", return_value=1.0)
+    @patch("instat.constants.time.sleep")
+    @patch("instat.constants.random.gauss", return_value=1.0)
     def test_human_delay_calls_sleep(self, mock_gauss, mock_sleep):
         result = human_delay(1.0)
         mock_gauss.assert_called_once_with(1.0, 0.3)
         mock_sleep.assert_called_once_with(1.0)
         self.assertEqual(result, 1.0)
 
-    @patch("InstaT.constants.time.sleep")
-    @patch("InstaT.constants.random.gauss", return_value=0.01)
+    @patch("instat.constants.time.sleep")
+    @patch("instat.constants.random.gauss", return_value=0.01)
     def test_human_delay_floor_at_0_1(self, mock_gauss, mock_sleep):
         result = human_delay(0.5)
         mock_sleep.assert_called_once_with(0.1)
         self.assertEqual(result, 0.1)
 
-    @patch("InstaT.constants.time.sleep")
-    @patch("InstaT.constants.random.gauss", return_value=-0.5)
+    @patch("instat.constants.time.sleep")
+    @patch("instat.constants.random.gauss", return_value=-0.5)
     def test_human_delay_floor_on_negative(self, mock_gauss, mock_sleep):
         result = human_delay(0.5)
         mock_sleep.assert_called_once_with(0.1)
         self.assertEqual(result, 0.1)
 
-    @patch("InstaT.constants.time.sleep")
-    @patch("InstaT.constants.random.gauss", return_value=2.5)
+    @patch("instat.constants.time.sleep")
+    @patch("instat.constants.random.gauss", return_value=2.5)
     def test_human_delay_custom_variance(self, mock_gauss, mock_sleep):
         result = human_delay(2.0, variance=0.5)
         mock_gauss.assert_called_once_with(2.0, 0.5)
         mock_sleep.assert_called_once_with(2.5)
         self.assertEqual(result, 2.5)
 
-    @patch("InstaT.constants.time.sleep")
+    @patch("instat.constants.time.sleep")
     def test_human_delay_never_returns_below_floor(self, mock_sleep):
         """Run multiple iterations to verify floor is always respected."""
         for _ in range(100):
-            with patch("InstaT.constants.random.gauss", return_value=-10.0):
+            with patch("instat.constants.random.gauss", return_value=-10.0):
                 result = human_delay(0.1)
                 self.assertGreaterEqual(result, 0.1)
 

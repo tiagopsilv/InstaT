@@ -28,7 +28,7 @@ class TestExtractionCheckpoint(unittest.TestCase):
             ckpt.clear()
             self.assertIsNone(ckpt.load())
 
-    @patch('InstaT.checkpoint.time')
+    @patch('instat.checkpoint.time')
     def test_expired_checkpoint_returns_none(self, mock_time):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Save at t=1000

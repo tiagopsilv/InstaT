@@ -15,7 +15,7 @@ class TestSessionCache(unittest.TestCase):
             loaded = cache.load('testuser')
             self.assertEqual(loaded, cookies)
 
-    @patch('InstaT.session_cache.time')
+    @patch('instat.session_cache.time')
     def test_load_expired_returns_none(self, mock_time):
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_time.time.return_value = 1000.0

@@ -116,14 +116,14 @@ class TestEngineManagerProxyPool(unittest.TestCase):
 
     def test_engine_manager_stores_proxy_pool(self):
         from instat.engines.engine_manager import EngineManager
-        from tests.test_engine_manager import MockEngine
+        from .test_engine_manager import MockEngine
         pool = ProxyPool(['http://p1:8080'])
         mgr = EngineManager([MockEngine('m1')], proxy_pool=pool)
         self.assertIs(mgr._proxy_pool, pool)
 
     def test_engine_manager_default_no_proxy_pool(self):
         from instat.engines.engine_manager import EngineManager
-        from tests.test_engine_manager import MockEngine
+        from .test_engine_manager import MockEngine
         mgr = EngineManager([MockEngine('m1')])
         self.assertIsNone(mgr._proxy_pool)
 
