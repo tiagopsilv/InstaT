@@ -55,9 +55,26 @@ target.is_private        # bool | None
 target.is_verified       # bool | None
 target.profile_pic_url   # str | None
 
-# Methods (delegate to the extractor that created this Profile)
+# Sync methods (delegate to the extractor)
 target.get_followers(max_duration=None)
 target.get_following(max_duration=None)
+
+# Parallel (delegates to get_followers_parallel / get_following_parallel
+# when workers >= 2)
+target.get_followers(
+    workers=3,
+    accounts=[
+        {"username": "alt1", "password": "..."},
+        {"username": "alt2", "password": "..."},
+        {"username": "alt3", "password": "..."},
+    ],
+    stop_threshold=0.98,
+    max_duration=300,
+)
+
+# Async (asyncio.to_thread wrappers — accept the same kwargs)
+await target.aget_followers(workers=2, max_duration=120)
+await target.aget_following()
 ```
 
 Implementation: 1 page load + parse of `og:description`, `og:title`, `og:image` meta tags + 2 quick `execute_script` probes for verified/private. No scroll, no heavy DOM traversal. Attributes that couldn't be parsed are `None`.

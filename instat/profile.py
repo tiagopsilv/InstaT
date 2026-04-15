@@ -5,9 +5,10 @@ Criado por InstaExtractor.get_profile(profile_id): navega ao perfil
 uma única vez, extrai metadados baratos (og tags + contadores) e
 expõe get_followers/get_following que delegam ao extractor.
 """
+import asyncio
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     from .extractor import InstaExtractor
@@ -50,17 +51,57 @@ class Profile:
         # dataclass não tem hook, mas __post_init__ é chamado pós-__init__
         pass
 
-    def get_followers(self, max_duration: Optional[float] = None) -> List[str]:
-        """Delega ao extractor associado."""
+    def _require_extractor(self):
         if self._extractor is None:
             raise RuntimeError("Profile not bound to an InstaExtractor")
-        return self._extractor.get_followers(self.username, max_duration=max_duration)
+        return self._extractor
 
-    def get_following(self, max_duration: Optional[float] = None) -> List[str]:
-        """Delega ao extractor associado."""
-        if self._extractor is None:
-            raise RuntimeError("Profile not bound to an InstaExtractor")
-        return self._extractor.get_following(self.username, max_duration=max_duration)
+    def get_followers(
+        self,
+        max_duration: Optional[float] = None,
+        workers: int = 1,
+        accounts: Optional[List[Dict[str, str]]] = None,
+        stop_threshold: float = 0.98,
+        headless: bool = True,
+    ) -> List[str]:
+        """
+        Extrai followers. Com workers=1 usa cascade normal; com workers>=2
+        paraleliza N browsers (recomendado com len(accounts) >= workers).
+        """
+        ext = self._require_extractor()
+        if workers and workers > 1:
+            return ext.get_followers_parallel(
+                self.username, workers=workers, accounts=accounts,
+                stop_threshold=stop_threshold, max_duration=max_duration,
+                headless=headless,
+            )
+        return ext.get_followers(self.username, max_duration=max_duration)
+
+    def get_following(
+        self,
+        max_duration: Optional[float] = None,
+        workers: int = 1,
+        accounts: Optional[List[Dict[str, str]]] = None,
+        stop_threshold: float = 0.98,
+        headless: bool = True,
+    ) -> List[str]:
+        """Análogo a get_followers."""
+        ext = self._require_extractor()
+        if workers and workers > 1:
+            return ext.get_following_parallel(
+                self.username, workers=workers, accounts=accounts,
+                stop_threshold=stop_threshold, max_duration=max_duration,
+                headless=headless,
+            )
+        return ext.get_following(self.username, max_duration=max_duration)
+
+    async def aget_followers(self, **kwargs) -> List[str]:
+        """Variante async de get_followers (asyncio.to_thread wrapper)."""
+        return await asyncio.to_thread(self.get_followers, **kwargs)
+
+    async def aget_following(self, **kwargs) -> List[str]:
+        """Variante async de get_following (asyncio.to_thread wrapper)."""
+        return await asyncio.to_thread(self.get_following, **kwargs)
 
 
 def _parse_shorthand_count(text: str) -> Optional[int]:

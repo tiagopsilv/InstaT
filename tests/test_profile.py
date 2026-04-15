@@ -65,11 +65,57 @@ class TestProfileBinding(unittest.TestCase):
         self.assertEqual(p.get_following(), ['x'])
         ext.get_following.assert_called_once_with('u', max_duration=None)
 
+    def test_get_followers_with_workers_uses_parallel(self):
+        from instat.profile import Profile
+        ext = MagicMock()
+        ext.get_followers_parallel.return_value = ['p1', 'p2', 'p3']
+        p = Profile(username='u', url='x', _extractor=ext)
+        accounts = [{'username': 'a', 'password': 'p'}]
+        result = p.get_followers(
+            workers=3, accounts=accounts,
+            stop_threshold=0.95, max_duration=120, headless=False,
+        )
+        ext.get_followers.assert_not_called()
+        ext.get_followers_parallel.assert_called_once_with(
+            'u', workers=3, accounts=accounts, stop_threshold=0.95,
+            max_duration=120, headless=False,
+        )
+        self.assertEqual(result, ['p1', 'p2', 'p3'])
+
+    def test_get_following_with_workers_uses_parallel(self):
+        from instat.profile import Profile
+        ext = MagicMock()
+        ext.get_following_parallel.return_value = ['x']
+        p = Profile(username='u', url='x', _extractor=ext)
+        p.get_following(workers=2)
+        ext.get_following.assert_not_called()
+        ext.get_following_parallel.assert_called_once()
+
     def test_unbound_raises(self):
         from instat.profile import Profile
         p = Profile(username='u', url='x')
         with self.assertRaises(RuntimeError):
             p.get_followers()
+
+
+class TestProfileAsync(unittest.IsolatedAsyncioTestCase):
+    async def test_aget_followers_delegates_sync(self):
+        from instat.profile import Profile
+        ext = MagicMock()
+        ext.get_followers.return_value = ['a', 'b']
+        p = Profile(username='u', url='x', _extractor=ext)
+        result = await p.aget_followers(max_duration=30)
+        self.assertEqual(result, ['a', 'b'])
+        ext.get_followers.assert_called_once_with('u', max_duration=30)
+
+    async def test_aget_following_with_workers(self):
+        from instat.profile import Profile
+        ext = MagicMock()
+        ext.get_following_parallel.return_value = ['x', 'y']
+        p = Profile(username='u', url='x', _extractor=ext)
+        result = await p.aget_following(workers=2, stop_threshold=0.9)
+        self.assertEqual(result, ['x', 'y'])
+        ext.get_following_parallel.assert_called_once()
 
 
 class TestGetProfileOnExtractor(unittest.TestCase):
