@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from InstaT.checkpoint import ExtractionCheckpoint
+from instat.checkpoint import ExtractionCheckpoint
 
 
 class TestExtractionCheckpoint(unittest.TestCase):

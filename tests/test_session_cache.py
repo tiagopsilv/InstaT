@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from InstaT.session_cache import SessionCache
+from instat.session_cache import SessionCache
 
 
 class TestSessionCache(unittest.TestCase):

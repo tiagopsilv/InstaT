@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from InstaT.constants import (
+from instat.constants import (
     COOKIE_RESTORE_REFRESH_TIMEOUT,
     DISMISS_MODAL_TIMEOUT,
     ELEMENT_RETRY_DELAY,

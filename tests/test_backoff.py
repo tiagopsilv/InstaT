@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from InstaT.backoff import SmartBackoff
+from instat.backoff import SmartBackoff
 
 
 @patch("InstaT.backoff.human_delay", return_value=1.0)
