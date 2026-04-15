@@ -22,7 +22,7 @@ jobs:
           pip install -e ".[dev]"
           python -c "import instat; print('instat OK', instat.__file__)"
       - name: Ruff
-        run: ruff check InstaT tests
+        run: ruff check instat tests
       - name: Mypy
         run: mypy
 
