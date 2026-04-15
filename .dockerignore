@@ -23,7 +23,7 @@ tests
 # Runtime artifacts
 .instat_checkpoints
 .instat_sessions
-InstaT/logs
+instat/logs
 instat/logs
 
 # IDE

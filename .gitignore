@@ -15,7 +15,7 @@ __pycache__/
 .instat_checkpoints/
 .instat_sessions/
 instat/logs/artifacts/
-InstaT/logs/
+instat/logs/
 
 # Egg info
 *.egg-info/

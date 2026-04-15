@@ -20,7 +20,7 @@ logger.add(
         "<level>{message}</level>"
     )
 )
-logger.add("InstaT/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=False)
+logger.add("instat/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=False)
 
 try:
     from instat.engines.engine_manager import EngineManager

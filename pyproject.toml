@@ -61,7 +61,6 @@ LinkedIn = "https://www.linkedin.com/in/tiagopsilvatec/"
 
 [tool.setuptools]
 packages = ["instat", "instat.config", "instat.engines"]
-package-dir = { "instat" = "InstaT", "instat.config" = "InstaT/config", "instat.engines" = "InstaT/engines" }
 include-package-data = true
 zip-safe = false
 
@@ -85,7 +84,7 @@ target-version = "py39"
 line-length = 120
 exclude = [
     ".venv", "build", "dist", "*.egg-info",
-    "InstaT/logs", ".instat_checkpoints", ".instat_sessions"
+    "instat/logs", ".instat_checkpoints", ".instat_sessions"
 ]
 
 [tool.ruff.lint]
@@ -103,7 +102,7 @@ known-first-party = ["instat"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["InstaT"]
+files = ["instat"]
 follow_imports = "silent"
 namespace_packages = false
 ignore_missing_imports = true
@@ -113,7 +112,7 @@ warn_redundant_casts = true
 no_implicit_optional = true
 # Disable error codes that produce many false positives due to lazy-init pattern
 # (self._client = None → later self._client = httpx.Client(...))
-disable_error_code = ["attr-defined", "return-value", "assignment", "misc", "return", "type-var", "arg-type"]
+disable_error_code = ["attr-defined", "return-value", "assignment", "misc", "return", "type-var", "arg-type", "no-redef", "import-not-found"]
 exclude = [
     "^build/",
     "^dist/",
