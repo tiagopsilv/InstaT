@@ -4,6 +4,20 @@ import sys
 import time
 from typing import Dict, List, Optional
 
+# Instagram username rules: 1-30 chars, ASCII letters/digits/dot/underscore.
+# Prevents path traversal ('../admin'), URL query/fragment injection
+# ('x?y=1', 'x#frag'), and unicode confusables from reaching
+# f"https://www.instagram.com/{profile_id}/" construction.
+_PROFILE_ID_RE = re.compile(r'^[A-Za-z0-9._]{1,30}$')
+
+
+def _validate_profile_id(profile_id: str) -> None:
+    if not isinstance(profile_id, str) or not _PROFILE_ID_RE.match(profile_id):
+        raise ValueError(
+            f"Invalid profile_id {profile_id!r}: must match "
+            f"[A-Za-z0-9._]{{1,30}} (Instagram username rules)."
+        )
+
 # Third-party
 from loguru import logger
 
@@ -253,6 +267,7 @@ class InstaExtractor:
         Retorna Profile ligado a este extractor — use
         profile.get_followers() / profile.get_following().
         """
+        _validate_profile_id(profile_id)
         try:
             from instat.profile import Profile, parse_profile_from_meta
         except ImportError:
@@ -319,10 +334,12 @@ class InstaExtractor:
 
     def get_followers(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
         """Returns a list of followers for the given profile id."""
+        _validate_profile_id(profile_id)
         return self._extract_with_export(profile_id, 'followers', max_duration)
 
     def get_following(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
         """Returns a list of accounts that the given profile id is following."""
+        _validate_profile_id(profile_id)
         return self._extract_with_export(profile_id, 'following', max_duration)
 
     def get_followers_parallel(self, profile_id: str,
@@ -332,6 +349,7 @@ class InstaExtractor:
                                max_duration: Optional[float] = None,
                                headless: bool = True) -> List[str]:
         """Extrai followers com N SeleniumEngines em paralelo (união)."""
+        _validate_profile_id(profile_id)
         return self._parallel(profile_id, 'followers', workers, accounts,
                               stop_threshold, max_duration, headless)
 
@@ -342,6 +360,7 @@ class InstaExtractor:
                                max_duration: Optional[float] = None,
                                headless: bool = True) -> List[str]:
         """Extrai following com N SeleniumEngines em paralelo (união)."""
+        _validate_profile_id(profile_id)
         return self._parallel(profile_id, 'following', workers, accounts,
                               stop_threshold, max_duration, headless)
 
@@ -413,6 +432,7 @@ class InstaExtractor:
 
         Retorna {'followers': [...], 'following': [...]}.
         """
+        _validate_profile_id(profile_id)
         from concurrent.futures import ThreadPoolExecutor
 
         def _do_followers():
@@ -472,6 +492,7 @@ class InstaExtractor:
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """Returns the total number of followers or following."""
+        _validate_profile_id(profile_id)
         return self._engine_manager.get_total_count(profile_id, list_type)
 
     def _extract_with_export(self, profile_id: str, list_type: str,

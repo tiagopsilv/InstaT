@@ -1,6 +1,8 @@
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from loguru import logger
 from selenium import webdriver
@@ -161,6 +163,20 @@ class InstaLogin:
         'consent':        ("Consentimento obrigatório (GDPR/termos)", "Aceite os termos de uso no navegador manualmente."),
     }
 
+    @staticmethod
+    def _redact_url(url: str) -> str:
+        """Remove query + fragment de URL antes de logar.
+
+        URLs de challenge contêm tokens como ?apc=... que são bearer tokens
+        de curta duração. Se forem logados em arquivo persistente, alguém
+        com acesso ao log pode reusar o token dentro do TTL.
+        """
+        try:
+            parts = urlsplit(url)
+            return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        except Exception:
+            return url
+
     def _check_account_blocked(self, driver):
         """
         Verificação unificada de bloqueio pós-login.
@@ -176,7 +192,7 @@ class InstaLogin:
                 screenshot_path = self._save_block_evidence(driver, indicator)
                 logger.error(
                     f"CONTA BLOQUEADA: {reason}\n"
-                    f"  URL: {current_url}\n"
+                    f"  URL: {self._redact_url(current_url)}\n"
                     f"  Titulo: {driver.title}\n"
                     f"  Acao: {action}\n"
                     f"  Evidencia: {screenshot_path}"
@@ -199,7 +215,7 @@ class InstaLogin:
                 screenshot_path = self._save_block_evidence(driver, "meta_interstitial")
                 logger.error(
                     f"CONTA BLOQUEADA: {reason}\n"
-                    f"  URL: {current_url}\n"
+                    f"  URL: {self._redact_url(current_url)}\n"
                     f"  Titulo: {page_title}\n"
                     f"  Assinatura detectada: '{sig}'\n"
                     f"  Acao: {action}\n"
@@ -219,7 +235,7 @@ class InstaLogin:
             screenshot_path = self._save_block_evidence(driver, "login_failed")
             logger.error(
                 f"CONTA BLOQUEADA: {reason}\n"
-                f"  URL: {current_url}\n"
+                f"  URL: {self._redact_url(current_url)}\n"
                 f"  Acao: {action}\n"
                 f"  Evidencia: {screenshot_path}"
             )
@@ -241,12 +257,21 @@ class InstaLogin:
 
         try:
             driver.save_screenshot(str(screenshot_path))
+            try:
+                os.chmod(screenshot_path, 0o600)
+            except (OSError, NotImplementedError):
+                pass
         except Exception as e:
             logger.warning(f"Failed to save screenshot: {e}")
             screenshot_path = "N/A"
 
         try:
             html_path.write_text(driver.page_source or "", encoding="utf-8")
+            # page_source contém tokens de sessão (csrftoken, lsd, apc)
+            try:
+                os.chmod(html_path, 0o600)
+            except (OSError, NotImplementedError):
+                pass
         except Exception as e:
             logger.warning(f"Failed to save page source: {e}")
 

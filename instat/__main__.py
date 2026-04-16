@@ -26,6 +26,7 @@ Exit codes:
   4 = erro inesperado
 """
 import argparse
+import getpass
 import os
 import sys
 from pathlib import Path
@@ -65,16 +66,47 @@ EXIT_UNEXPECTED = 4
 
 
 def _resolve_credentials(args) -> tuple:
-    """Retorna (username, password). Prioridade: flags > env vars. Erro 1 se faltar."""
+    """Retorna (username, password).
+
+    Prioridade: env vars > flags > prompt interativo (getpass).
+    Flag --password é suportada por retrocompat mas emite warning — argv é
+    visível via `ps`/Task Manager. Env var é o caminho preferido.
+    Se TTY indisponível e nenhuma fonte tem senha, sai com exit 1.
+    """
     username = args.username or os.environ.get('INSTAT_USERNAME')
     password = args.password or os.environ.get('INSTAT_PASSWORD')
-    if not username or not password:
+
+    if args.password:
         print(
-            "error: credentials missing. Provide --username/--password or "
-            "set INSTAT_USERNAME/INSTAT_PASSWORD env vars.",
+            "warning: --password on argv is visible to other users via `ps`. "
+            "Prefer INSTAT_PASSWORD env var.",
+            file=sys.stderr,
+        )
+
+    if not username:
+        print(
+            "error: username missing. Use --username or INSTAT_USERNAME env var.",
             file=sys.stderr,
         )
         sys.exit(EXIT_INPUT)
+
+    if not password:
+        if not sys.stdin.isatty():
+            print(
+                "error: password missing. Set INSTAT_PASSWORD env var "
+                "(preferred) or use --password (visible in process list).",
+                file=sys.stderr,
+            )
+            sys.exit(EXIT_INPUT)
+        try:
+            password = getpass.getpass(f"Instagram password for {username}: ")
+        except (EOFError, KeyboardInterrupt):
+            print("error: password prompt aborted.", file=sys.stderr)
+            sys.exit(EXIT_INPUT)
+        if not password:
+            print("error: empty password.", file=sys.stderr)
+            sys.exit(EXIT_INPUT)
+
     return username, password
 
 

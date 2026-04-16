@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Instala o InstaT
 COPY pyproject.toml README.md ./
-COPY InstaT ./InstaT
+COPY instat ./instat
 RUN pip install --no-cache-dir -e .
 
 # Usuário não-root
