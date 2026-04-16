@@ -31,14 +31,25 @@ class ExtractionCheckpoint:
         self._file.write_text(json.dumps(data), encoding='utf-8')
 
     def load(self) -> Optional[Set[str]]:
-        """Carrega checkpoint se existir e não estiver expirado."""
+        """Carrega checkpoint se existir, for válido e não estiver expirado.
+
+        JSON corrompido (crash mid-write) ou schema ausente são tratados
+        como "sem checkpoint": o arquivo é removido e retornamos None,
+        evitando que 1 arquivo quebrado derrube toda a extração.
+        """
         if not self._file.exists():
             return None
-        data = json.loads(self._file.read_text(encoding='utf-8'))
-        if time.time() - data['timestamp'] > self.EXPIRY_SECONDS:
+        try:
+            data = json.loads(self._file.read_text(encoding='utf-8'))
+            timestamp = data['timestamp']
+            profiles = data['profiles']
+        except (json.JSONDecodeError, KeyError, OSError, TypeError):
             self.clear()
             return None
-        return set(data['profiles'])
+        if time.time() - timestamp > self.EXPIRY_SECONDS:
+            self.clear()
+            return None
+        return set(profiles)
 
     def clear(self) -> None:
         """Remove arquivo de checkpoint."""

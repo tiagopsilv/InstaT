@@ -67,5 +67,10 @@
         "//div[@role='button' and @aria-label='Continue']",
         "//div[@role='button' and @aria-label='Continuar']",
         "//button[@aria-label='Continue' or @aria-label='Continuar']"
+    ],
+    "EMAIL_CHALLENGE_GET_NEW_CODE": [
+        "//span[@role='link' and @label='Get a new code']",
+        "//span[@role='link' and @label='Obter um novo código']",
+        "//span[contains(text(),'Get a new code') or contains(text(),'novo código')]"
     ]
 }

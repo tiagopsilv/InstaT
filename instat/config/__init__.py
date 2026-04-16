@@ -14,7 +14,7 @@ DEFAULT_SELECTORS_PATH = os.path.join(os.path.dirname(__file__), "selectors.json
 
 # Safe loader with fallback
 try:
-    selectors = SelectorLoader().load(DEFAULT_SELECTORS_PATH)
+    selectors = SelectorLoader(DEFAULT_SELECTORS_PATH).selectors
 except Exception as e:
     import logging
     logging.warning(f"Could not load selectors.json: {e}. Using empty fallback.")

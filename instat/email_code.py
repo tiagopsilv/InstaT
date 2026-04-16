@@ -38,6 +38,15 @@ _VERIFICATION_KEYWORDS = (
     'código de confirmação',
     'security code',
     'código de segurança',
+    'verify your account',
+    'verifique sua conta',
+    'confirm your identity',
+    'confirme sua identidade',
+    'use the following code',
+    'use o código a seguir',
+    'use o seguinte código',
+    'tried to log in',
+    'tentou fazer login',
 )
 
 
@@ -86,9 +95,13 @@ def _decode_str(raw) -> str:
 
 
 def _get_body(msg) -> str:
-    """Extrai texto de um email.Message — prefere text/plain, fallback text/html."""
+    """
+    Extrai todo o texto de um email.Message — concatena text/plain + text/html
+    (todas as partes), maximizando chance de pegar o código. Chamadores ainda
+    podem aplicar regex de 6 dígitos sobre o retorno sem ambiguidade.
+    """
+    parts_text = []
     if msg.is_multipart():
-        text_plain, text_html = '', ''
         for part in msg.walk():
             ct = part.get_content_type()
             if ct not in ('text/plain', 'text/html'):
@@ -98,22 +111,26 @@ def _get_body(msg) -> str:
                 if payload is None:
                     continue
                 charset = part.get_content_charset() or 'utf-8'
-                decoded = payload.decode(charset, errors='ignore')
+                parts_text.append(payload.decode(charset, errors='ignore'))
             except Exception:
                 continue
-            if ct == 'text/plain' and not text_plain:
-                text_plain = decoded
-            elif ct == 'text/html' and not text_html:
-                text_html = decoded
-        return text_plain or text_html
+    else:
+        try:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                charset = msg.get_content_charset() or 'utf-8'
+                parts_text.append(payload.decode(charset, errors='ignore'))
+        except Exception:
+            pass
+    return '\n'.join(parts_text)
+
+
+def _raw_message_text(raw_bytes: bytes) -> str:
+    """Último recurso: decodifica os bytes brutos (útil quando parsing MIME falha)."""
     try:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or 'utf-8'
-            return payload.decode(charset, errors='ignore')
+        return raw_bytes.decode('utf-8', errors='ignore')
     except Exception:
-        pass
-    return ''
+        return ''
 
 
 def _is_from_instagram(from_header: str) -> bool:
@@ -203,9 +220,12 @@ def fetch_instagram_code(
                             continue
                         subject = _decode_str(msg.get('Subject'))
                         body = _get_body(msg)
-                        if not _looks_like_verification(subject, body):
+                        # Último recurso: bytes brutos da mensagem (captura casos
+                        # em que o parser MIME não extraiu o corpo corretamente).
+                        raw_text = _raw_message_text(raw) if not body else ''
+                        if not _looks_like_verification(subject, body + '\n' + raw_text):
                             continue
-                        code = _extract_code(subject, body)
+                        code = _extract_code(subject, body) or _extract_code('', raw_text)
                         if code:
                             logger.info(f"IMAP: code found after {attempts} attempt(s)")
                             return code

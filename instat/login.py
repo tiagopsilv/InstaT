@@ -31,6 +31,8 @@ logger.add(
     sys.stderr,
     level="DEBUG",
     colorize=True,
+    backtrace=True,
+    diagnose=False,
     format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 )
@@ -328,10 +330,33 @@ class InstaLogin:
         if not heading_found:
             return False
 
-        logger.info("Detected email verification challenge — fetching code via IMAP")
-        from datetime import datetime, timezone
-        started_at = datetime.now(timezone.utc)
+        logger.info("Detected email verification challenge — requesting fresh code")
         cfg = ImapConfig.from_dict(self._imap_config)
+        from datetime import datetime, timezone
+
+        # Clica em "Get a new code" para forçar IG a enviar código fresh,
+        # evitando pegar códigos já usados/expirados de tentativas anteriores.
+        new_code_clicked = False
+        for sel in self.selectors.get_all("EMAIL_CHALLENGE_GET_NEW_CODE"):
+            try:
+                el = driver.find_element(By.XPATH, sel)
+                try:
+                    el.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", el)
+                new_code_clicked = True
+                logger.info("Clicked 'Get a new code' to trigger fresh email")
+                break
+            except NoSuchElementException:
+                continue
+
+        # Marca tempo ANTES de solicitar novo código; buscaremos apenas
+        # e-mails recebidos a partir daqui (garante código novo exclusivo
+        # desta sessão, não um residual de testes anteriores).
+        started_at = datetime.now(timezone.utc)
+        if new_code_clicked:
+            # Pequena espera para IG processar o clique e a SMTP entregar
+            human_delay(6.0, variance=1.0)
         code = fetch_instagram_code(cfg, started_at=started_at)
         if not code:
             logger.warning("IMAP fetch returned no code; falling back to block detection")
@@ -353,21 +378,73 @@ class InstaLogin:
             input_el.clear()
         except Exception:
             pass
-        input_el.send_keys(code)
 
-        # Clica Continue
+        # Preenche via send_keys + dispara eventos React (input + change + blur)
+        # para garantir que o framework perceba o valor e habilite o Continue.
+        input_el.send_keys(code)
+        try:
+            driver.execute_script(
+                "const el = arguments[0]; const setter = "
+                "Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; "
+                "setter.call(el, arguments[1]); "
+                "el.dispatchEvent(new Event('input', {bubbles: true})); "
+                "el.dispatchEvent(new Event('change', {bubbles: true})); "
+                "el.blur();",
+                input_el, code,
+            )
+        except Exception as e:
+            logger.debug(f"React event dispatch failed (non-fatal): {e}")
+        # Pequena pausa para UI re-renderizar e habilitar o botão
+        human_delay(0.8, variance=0.2)
+
+        # Clica Continue — 3 estratégias: native click, JS click, send Enter
         clicked = False
+        btn = None
         for sel in self.selectors.get_all("EMAIL_CHALLENGE_CONTINUE"):
             try:
                 btn = driver.find_element(By.XPATH, sel)
-                try:
-                    btn.click()
-                except Exception:
-                    driver.execute_script("arguments[0].click();", btn)
-                clicked = True
                 break
             except NoSuchElementException:
                 continue
+        if btn is not None:
+            # Bloks/Meta monta o handler de clique no ancestor com
+            # cursor:pointer e pointer-events:auto, não no role=button em si.
+            # Tentamos 4 estratégias em cascata.
+            for strategy in ('ancestor_js', 'native', 'js', 'enter'):
+                try:
+                    if strategy == 'ancestor_js':
+                        driver.execute_script(
+                            "let el = arguments[0]; "
+                            "while (el) { "
+                            "  const st = window.getComputedStyle(el); "
+                            "  if (st.cursor === 'pointer' && st.pointerEvents !== 'none') { "
+                            "    el.click(); return; "
+                            "  } "
+                            "  el = el.parentElement; "
+                            "} "
+                            "arguments[0].click();",
+                            btn,
+                        )
+                    elif strategy == 'native':
+                        btn.click()
+                    elif strategy == 'js':
+                        driver.execute_script("arguments[0].click();", btn)
+                    else:
+                        input_el.send_keys(Keys.RETURN)
+                    clicked = True
+                    logger.debug(f"Continue clicked via {strategy}")
+                    # Pequeno delay e verifica se challenge sumiu — se não,
+                    # próxima estratégia já.
+                    human_delay(1.5, variance=0.3)
+                    try:
+                        driver.find_element(By.CSS_SELECTOR, headings[0])
+                        # heading ainda presente → estratégia não funcionou
+                        clicked = False
+                        continue
+                    except NoSuchElementException:
+                        break
+                except Exception as e:
+                    logger.debug(f"Continue click via {strategy} failed: {e}")
         if not clicked:
             logger.warning("Could not click Continue on email challenge")
             return False
