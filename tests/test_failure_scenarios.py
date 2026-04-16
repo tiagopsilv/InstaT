@@ -169,9 +169,11 @@ class TestExpiredSessionFallsBackToForm(unittest.TestCase):
         patches.append(p1)
         mock_driver = p1.start().return_value
         p2 = patch("instat.login.GeckoDriverManager")
-        patches.append(p2); p2.start()
+        patches.append(p2)
+        p2.start()
         p3 = patch("instat.login.Service")
-        patches.append(p3); p3.start()
+        patches.append(p3)
+        p3.start()
 
         selmap = {
             "LOGIN_USERNAME_INPUT": "input[name='username']",
