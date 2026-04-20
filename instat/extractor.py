@@ -602,14 +602,19 @@ class InstaExtractor:
         )
         accumulated.update(first)
 
-        total = None
+        total: Optional[int] = None
         try:
             total = self._engine_manager.get_total_count(profile_id, list_type)
         except Exception as e:
             logger.debug(f"rotation: get_total_count failed: {e}")
 
+        # Precompute so mypy sees a concrete int target (or None = never hit).
+        target_count: Optional[int] = (
+            int(total * target_fraction) if total else None
+        )
+
         def _target_hit() -> bool:
-            return bool(total) and len(accumulated) >= int(total * target_fraction)
+            return target_count is not None and len(accumulated) >= target_count
 
         if _target_hit() or not fallbacks:
             return sorted(accumulated)
