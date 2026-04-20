@@ -3,7 +3,7 @@ primary (selenium) is already logged in, inject cookies via
 login_with_cookies instead of form-login."""
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from instat.engines.engine_manager import EngineManager
 from instat.exceptions import BlockedError
@@ -149,6 +149,66 @@ class TestCookieHandoff(unittest.TestCase):
                 em.ExtractionCheckpoint = original_cls
 
         playwright.login.assert_called_once_with('u', 'p')
+
+
+class TestHandoffDiagnosticLogging(unittest.TestCase):
+    """Every early-return path in _try_cookie_handoff must log."""
+
+    def test_no_login_with_cookies_logs_reason(self):
+        from instat.engines.engine_manager import EngineManager
+        import instat.engines.engine_manager as em_mod
+
+        eng_target = MagicMock()
+        eng_target.name = 'playwright'
+        del eng_target.login_with_cookies
+        eng_source = MagicMock()
+        eng_source.name = 'selenium'
+        eng_source._driver = MagicMock()
+
+        mgr = EngineManager([eng_source, eng_target])
+        with patch.object(em_mod, 'logger') as mock_logger:
+            result = mgr._try_cookie_handoff(eng_target)
+        self.assertFalse(result)
+        # Must have logged SOMETHING explaining why
+        debug_msgs = [str(c.args[0]) if c.args else '' for c in mock_logger.debug.call_args_list]
+        self.assertTrue(
+            any('no login_with_cookies' in m for m in debug_msgs),
+            f"expected 'no login_with_cookies' log, got {debug_msgs}",
+        )
+
+    def test_no_peer_driver_logs_reason(self):
+        from instat.engines.engine_manager import EngineManager
+        import instat.engines.engine_manager as em_mod
+
+        eng_target = MagicMock()
+        eng_target.name = 'httpx'
+        eng_target.login_with_cookies = MagicMock()
+        eng_source = MagicMock()
+        eng_source.name = 'selenium'
+        del eng_source._driver  # no live driver
+
+        mgr = EngineManager([eng_source, eng_target])
+        with patch.object(em_mod, 'logger') as mock_logger:
+            result = mgr._try_cookie_handoff(eng_target)
+        self.assertFalse(result)
+        eng_target.login_with_cookies.assert_not_called()
+        debug_msgs = [str(c.args[0]) if c.args else '' for c in mock_logger.debug.call_args_list]
+        self.assertTrue(
+            any('no live _driver' in m or 'no peer engine' in m for m in debug_msgs),
+            f"expected diagnostic log, got {debug_msgs}",
+        )
+
+    def test_real_httpx_engine_has_login_with_cookies(self):
+        """Regression: HttpxEngine exposes login_with_cookies directly.
+        Earlier analysis suspected hasattr was returning False — this
+        nails down the real class contract."""
+        try:
+            from instat.engines.httpx_engine import HttpxEngine
+        except ImportError:
+            self.skipTest("httpx not installed")
+        eng = HttpxEngine()
+        self.assertTrue(hasattr(eng, 'login_with_cookies'))
+        self.assertTrue(callable(eng.login_with_cookies))
 
 
 if __name__ == '__main__':

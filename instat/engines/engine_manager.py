@@ -111,38 +111,64 @@ class EngineManager:
         cascade has a live driver with valid cookies, we can reuse them
         verbatim — bypasses the form-login entirely and picks up where
         the browser session left off.
+
+        Emits detailed debug logs at every early-return path — essential
+        because a silent False here means the fallback login runs, which
+        in production masked the fact that handoff was never actually
+        firing (validated in a live run against a burned account).
         """
+        target_name = getattr(target_engine, 'name', type(target_engine).__name__)
         if not hasattr(target_engine, 'login_with_cookies'):
+            logger.debug(
+                f"cookie handoff[{target_name}]: skipped — no "
+                f"login_with_cookies method"
+            )
             return False
+        tried_any = False
         for other in self.engines:
             if other is target_engine:
                 continue
+            other_name = getattr(other, 'name', type(other).__name__)
             driver = getattr(other, '_driver', None)
             if driver is None:
+                logger.debug(
+                    f"cookie handoff[{target_name}]: source {other_name} "
+                    f"has no live _driver"
+                )
                 continue
+            tried_any = True
             try:
                 cookies = driver.get_cookies()
             except Exception as e:
                 logger.debug(
-                    f"cookie handoff: failed reading cookies from "
-                    f"{other.name}: {e}"
+                    f"cookie handoff[{target_name}]: failed reading "
+                    f"cookies from {other_name}: {e}"
                 )
                 continue
             if not cookies:
+                logger.debug(
+                    f"cookie handoff[{target_name}]: {other_name} "
+                    f"returned empty cookies"
+                )
                 continue
             try:
                 target_engine.login_with_cookies(cookies)
                 logger.info(
-                    f"cookie handoff: {target_engine.name} got "
-                    f"{len(cookies)} cookies from {other.name}"
+                    f"cookie handoff[{target_name}]: got {len(cookies)} "
+                    f"cookies from {other_name}"
                 )
                 return True
             except Exception as e:
                 logger.warning(
-                    f"cookie handoff from {other.name} to "
-                    f"{target_engine.name} failed: {e}"
+                    f"cookie handoff[{target_name}] from {other_name} "
+                    f"failed: {type(e).__name__}: {e}"
                 )
                 return False
+        if not tried_any:
+            logger.debug(
+                f"cookie handoff[{target_name}]: no peer engine had a "
+                f"live _driver (checked {len(self.engines) - 1} peer(s))"
+            )
         return False
 
     def _get_sessions_iter(self):
