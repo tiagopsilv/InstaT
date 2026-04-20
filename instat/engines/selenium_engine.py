@@ -542,7 +542,7 @@ class SeleniumEngine(BaseEngine):
             return False
         elapsed = time.perf_counter() - start_time
         if elapsed > max_duration:
-            logger.warning("Max duration (%.1fs) exceeded.", max_duration)
+            logger.warning("Max duration ({:.1f}s) exceeded.", max_duration)
             return True
         return False
 

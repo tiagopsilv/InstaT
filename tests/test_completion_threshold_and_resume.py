@@ -65,6 +65,84 @@ class TestCompletionThresholdKwarg(unittest.TestCase):
             InstaExtractor('u', 'p', completion_threshold=-0.1)
 
 
+class TestCascadeDisabledWarning(unittest.TestCase):
+    """Low completion_threshold + multi-engine effectively disables the
+    cascade — warn the caller."""
+
+    def test_warns_on_low_threshold_with_multi_engine(self):
+        from instat.extractor import InstaExtractor
+        fake_a = MagicMock()
+        fake_a.name = 'selenium'
+        fake_a.completion_threshold = 0.90
+        fake_b = MagicMock()
+        fake_b.name = 'httpx'
+        fake_b.completion_threshold = 0.90
+
+        captured = []
+        with patch.object(
+            InstaExtractor, '_build_engines',
+            return_value=[fake_a, fake_b],
+        ), patch('instat.extractor.EngineManager'), \
+           patch('instat.extractor.logger') as mock_logger:
+            fake_a.login.return_value = True
+            fake_a._driver = MagicMock()
+            fake_a._login_obj = MagicMock()
+            mock_logger.warning.side_effect = lambda msg, *a, **k: captured.append(
+                msg % a if a else msg
+            )
+            InstaExtractor('u', 'p', engines=['selenium', 'httpx'],
+                           completion_threshold=0.05)
+
+        joined = "\n".join(str(c) for c in captured)
+        self.assertIn('0.05', joined)
+        self.assertIn('cascade', joined.lower())
+
+    def test_no_warning_on_single_engine(self):
+        from instat.extractor import InstaExtractor
+        fake = MagicMock()
+        fake.name = 'selenium'
+        fake.completion_threshold = 0.90
+
+        with patch.object(
+            InstaExtractor, '_build_engines', return_value=[fake],
+        ), patch('instat.extractor.EngineManager'), \
+           patch('instat.extractor.logger') as mock_logger:
+            fake.login.return_value = True
+            fake._driver = MagicMock()
+            fake._login_obj = MagicMock()
+            InstaExtractor('u', 'p', engines=['selenium'],
+                           completion_threshold=0.05)
+
+        # No cascade-disabled warning when only one engine
+        for call in mock_logger.warning.call_args_list:
+            msg = str(call.args[0]) if call.args else ''
+            self.assertNotIn('cascade will not trigger', msg)
+
+    def test_no_warning_on_high_threshold_multi_engine(self):
+        from instat.extractor import InstaExtractor
+        fake_a = MagicMock()
+        fake_a.name = 'selenium'
+        fake_a.completion_threshold = 0.90
+        fake_b = MagicMock()
+        fake_b.name = 'httpx'
+        fake_b.completion_threshold = 0.90
+
+        with patch.object(
+            InstaExtractor, '_build_engines',
+            return_value=[fake_a, fake_b],
+        ), patch('instat.extractor.EngineManager'), \
+           patch('instat.extractor.logger') as mock_logger:
+            fake_a.login.return_value = True
+            fake_a._driver = MagicMock()
+            fake_a._login_obj = MagicMock()
+            InstaExtractor('u', 'p', engines=['selenium', 'httpx'],
+                           completion_threshold=0.80)
+
+        for call in mock_logger.warning.call_args_list:
+            msg = str(call.args[0]) if call.args else ''
+            self.assertNotIn('cascade will not trigger', msg)
+
+
 class TestUntilCompleteLoop(unittest.TestCase):
 
     def test_returns_early_when_target_reached(self):

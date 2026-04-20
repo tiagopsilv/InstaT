@@ -106,6 +106,14 @@ class InstaExtractor:
           o engine aceita como sucesso. Abaixo levanta BlockedError para a
           cascata tentar o próximo engine. Default None mantém o default do
           engine (SeleniumEngine usa 0.90).
+
+          IMPORTANTE: valores baixos (< 0.5) efetivamente DESABILITAM
+          a cascata multi-engine — o primeiro engine vai considerar
+          qualquer coverage acima do threshold como sucesso e nunca
+          passará a bola para o próximo. Um warning é emitido quando
+          essa combinação é detectada. Para coletar "o que der", use
+          `completion_threshold=None` (default) + `get_*_until_complete`
+          ao invés disso — o wrapper acumula parciais entre retries.
         """
         self.username = username
         self.password = password
@@ -145,6 +153,16 @@ class InstaExtractor:
             for eng in engine_instances:
                 if hasattr(eng, 'completion_threshold'):
                     eng.completion_threshold = self._completion_threshold_override
+            if (len(engine_instances) > 1
+                    and self._completion_threshold_override < 0.5):
+                logger.warning(
+                    f"completion_threshold={self._completion_threshold_override} "
+                    "< 0.5 combined with multi-engine cascade "
+                    f"{[e.name for e in engine_instances]}: the first engine "
+                    "will accept low coverage as success and the cascade "
+                    "will not trigger. Use get_*_until_complete for "
+                    "best-effort partial collection."
+                )
 
         logger.info("Initializing InstaExtractor with username: {}", username)
 
@@ -349,12 +367,22 @@ class InstaExtractor:
         )
 
     def get_followers(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
-        """Returns a list of followers for the given profile id."""
+        """Returns a list of followers for the given profile id.
+
+        max_duration: segundos de budget via `time.perf_counter`. No
+          Windows, isso inclui tempo em que o SO dormiu — rodar uma
+          extração através de um ciclo sleep/wake do notebook dispara
+          max_duration imediatamente ao acordar. Evite rodar
+          overnight em laptops sem inibir o sono.
+        """
         _validate_profile_id(profile_id)
         return self._extract_with_export(profile_id, 'followers', max_duration)
 
     def get_following(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
-        """Returns a list of accounts that the given profile id is following."""
+        """Returns a list of accounts that the given profile id is following.
+
+        max_duration: ver nota em `get_followers`.
+        """
         _validate_profile_id(profile_id)
         return self._extract_with_export(profile_id, 'following', max_duration)
 
