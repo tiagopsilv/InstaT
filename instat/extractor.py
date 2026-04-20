@@ -362,12 +362,20 @@ class InstaExtractor:
                                 target_fraction: float, max_retries: int,
                                 retry_wait_s: float,
                                 max_duration: Optional[float]) -> List[str]:
-        """Loop de retry auto-resume: chama extract até atingir cobertura
-        alvo, estagnar, ou esgotar retries.
+        """Loop de retry com acumulador cross-iteration.
 
-        Funciona porque EngineManager preserva o checkpoint em
-        BlockedError (só faz checkpoint.clear em sucesso total), então
-        cada iteração prossegue de onde a anterior parou.
+        Mantém a união de perfis coletados em TODAS as iterações em
+        `accumulated`. Cada call de `_extract_with_export` pode retornar
+        menos que antes (rate-limit, modal quebrado, navegador travado)
+        — o acumulador garante que o resultado final nunca regride.
+
+        Para quando: cobertura acumulada >= target, iterações esgotadas,
+        ou uma iteração não adiciona nenhum perfil novo ao acumulado.
+
+        NOTA: `EngineManager.checkpoint.clear()` dispara em qualquer
+        retorno não-None, então `engine_manager.extract` não retoma
+        naturalmente entre iterações. O acumulador aqui é justamente
+        o contorno dessa tensão de semântica.
         """
         if not 0 < target_fraction <= 1:
             raise ValueError(
@@ -383,34 +391,49 @@ class InstaExtractor:
             logger.debug(f"until_complete: get_total_count failed: {e}")
 
         target = int((total or 0) * target_fraction)
-        last_count = 0
-        result: List[str] = []
+        accumulated: set = set()
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 logger.info(
                     f"until_complete: retry {attempt}/{max_retries} after "
-                    f"{retry_wait_s}s (have {last_count}"
+                    f"{retry_wait_s}s (have {len(accumulated)}"
                     f"{' /' + str(total) if total else ''})"
                 )
                 time.sleep(retry_wait_s)
-            result = self._extract_with_export(
-                profile_id, list_type, max_duration
-            )
-            count = len(result)
-            if total and count >= target:
+            raised = False
+            try:
+                iteration = self._extract_with_export(
+                    profile_id, list_type, max_duration
+                )
+            except Exception as e:
+                # Proteção: uma iteração que crasha (Firefox morto, etc.)
+                # não significa que o IG está realmente estagnado. Preserva
+                # o acumulado e segue tentando — não conta como estagnação.
+                logger.warning(
+                    f"until_complete: attempt {attempt} raised "
+                    f"{type(e).__name__}: {e} — keeping accumulated "
+                    f"({len(accumulated)})"
+                )
+                iteration = []
+                raised = True
+            before = len(accumulated)
+            accumulated.update(iteration)
+            after = len(accumulated)
+            if total and after >= target:
                 logger.info(
-                    f"until_complete: hit target {count}/{total} "
+                    f"until_complete: hit target {after}/{total} "
                     f"(>= {target_fraction:.0%})"
                 )
-                return result
-            if attempt > 0 and count <= last_count:
+                return sorted(accumulated)
+            # Stagnation check: só conta quando a iteração executou
+            # completamente (sem raise) e ainda assim não trouxe nada novo.
+            if attempt > 0 and not raised and after == before:
                 logger.info(
-                    f"until_complete: stagnated at {count} after retry — "
-                    "stopping to avoid burning rate-limit"
+                    f"until_complete: no new profiles after retry (stuck at "
+                    f"{after}) — stopping to avoid burning rate-limit"
                 )
-                return result
-            last_count = count
-        return result
+                return sorted(accumulated)
+        return sorted(accumulated)
 
     def get_followers_until_complete(
         self, profile_id: str, *,

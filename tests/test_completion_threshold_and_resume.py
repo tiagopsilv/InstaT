@@ -86,51 +86,46 @@ class TestUntilCompleteLoop(unittest.TestCase):
         self.assertEqual(len(res), 96)
 
     def test_retries_then_stops_on_stagnation(self):
+        """If a retry adds NO new profiles to the union, stop — keep the union."""
         ext = _make_extractor_skeleton()
         ext._engine_manager.get_total_count.return_value = 1000
 
         sequence = iter([
-            ['u%d' % i for i in range(500)],   # 50% — retry
-            ['u%d' % i for i in range(700)],   # 70% — retry
-            ['u%d' % i for i in range(700)],   # stagnated — stop
+            ['u%d' % i for i in range(500)],
+            ['u%d' % i for i in range(700)],       # union = 700
+            ['u%d' % i for i in range(700)],       # no new — stop
         ])
 
-        def fake_extract(*a, **kw):
-            return next(sequence)
-
-        with patch.object(ext, '_extract_with_export', side_effect=fake_extract), \
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
              patch('instat.extractor.time.sleep'):
             res = ext.get_following_until_complete(
                 'user', target_fraction=0.95, max_retries=5, retry_wait_s=0,
             )
-
         self.assertEqual(len(res), 700)
 
-    def test_retries_then_exhausts(self):
+    def test_retries_then_exhausts_returns_accumulated(self):
         ext = _make_extractor_skeleton()
         ext._engine_manager.get_total_count.return_value = 1000
 
         sequence = iter([
-            ['u%d' % i for i in range(100)],
-            ['u%d' % i for i in range(200)],
-            ['u%d' % i for i in range(300)],
-            ['u%d' % i for i in range(400)],  # final attempt, still below 95%
+            ['u%d' % i for i in range(100)],            # union 0..99 (100)
+            ['u%d' % i for i in range(100, 200)],       # union 0..199 (200)
+            ['u%d' % i for i in range(200, 300)],       # union 0..299 (300)
+            ['u%d' % i for i in range(300, 400)],       # union 0..399 (400)
         ])
 
-        def fake_extract(*a, **kw):
-            return next(sequence)
-
-        with patch.object(ext, '_extract_with_export', side_effect=fake_extract), \
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
              patch('instat.extractor.time.sleep'):
             res = ext.get_following_until_complete(
                 'user', target_fraction=0.95, max_retries=3, retry_wait_s=0,
             )
 
-        # 4 calls total (initial + 3 retries), 400 returned
+        # 4 attempts, 4 disjoint slices => accumulated 400
         self.assertEqual(len(res), 400)
 
     def test_total_unknown_still_returns_what_it_got(self):
-        """get_total_count None → no target, single attempt."""
         ext = _make_extractor_skeleton()
         ext._engine_manager.get_total_count.side_effect = RuntimeError("no total")
 
@@ -146,11 +141,79 @@ class TestUntilCompleteLoop(unittest.TestCase):
                 'user', target_fraction=0.95, max_retries=2, retry_wait_s=0,
             )
 
-        # No target known → every iteration "succeeds" but never beats target.
-        # Stagnation kicks in on 2nd call (count <= last_count).
-        # So we expect exactly 2 attempts (initial + 1 retry that stagnated).
+        # No target known, 2nd call adds no new profiles → stagnation stop.
         self.assertEqual(len(calls), 2)
-        self.assertEqual(res, ['a', 'b', 'c'])
+        self.assertEqual(sorted(res), ['a', 'b', 'c'])
+
+    def test_regression_worst_case_preserves_best(self):
+        """B2 regression: iteration 2 returns 0 after iteration 1 got 2724
+        — final must NOT be 0. This is the exact bug the v2 live test hit."""
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = 3579
+
+        sequence = iter([
+            ['u%d' % i for i in range(398)],        # it 1 → accumulated 398
+            ['u%d' % i for i in range(2724)],       # it 2 → accumulated 2724
+            [],                                      # it 3 → crashed, 0 new
+            [],                                      # it 4 would stagnate
+        ])
+
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
+             patch('instat.extractor.time.sleep'):
+            res = ext.get_following_until_complete(
+                'user', target_fraction=0.90, max_retries=3, retry_wait_s=0,
+            )
+
+        # MUST return the 2724, not 0
+        self.assertEqual(len(res), 2724)
+
+    def test_iteration_raises_keeps_accumulated(self):
+        """If an iteration raises, previously-accumulated profiles are kept."""
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = 1000
+
+        sequence = iter([
+            ['u%d' % i for i in range(500)],
+            RuntimeError("firefox died"),
+            ['u%d' % i for i in range(500, 700)],
+        ])
+
+        def maybe_raise(*a, **kw):
+            v = next(sequence)
+            if isinstance(v, Exception):
+                raise v
+            return v
+
+        with patch.object(ext, '_extract_with_export', side_effect=maybe_raise), \
+             patch('instat.extractor.time.sleep'):
+            res = ext.get_following_until_complete(
+                'user', target_fraction=0.95, max_retries=3, retry_wait_s=0,
+            )
+
+        # iteration 1 → 500, iteration 2 raised (0 new), iteration 3 → 700 total
+        self.assertEqual(len(res), 700)
+
+    def test_duplicate_profiles_across_iterations_deduped(self):
+        """Acumulador deduplica entre iterações."""
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = 100
+
+        sequence = iter([
+            ['a', 'b', 'c'],
+            ['b', 'c', 'd'],     # 1 novo — mas under target, continua
+            ['d', 'e'],          # 1 novo (e)
+            ['d', 'e'],          # 0 novos → stop
+        ])
+
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
+             patch('instat.extractor.time.sleep'):
+            res = ext.get_following_until_complete(
+                'user', target_fraction=0.95, max_retries=5, retry_wait_s=0,
+            )
+
+        self.assertEqual(sorted(res), ['a', 'b', 'c', 'd', 'e'])
 
     def test_rejects_bad_target_fraction(self):
         ext = _make_extractor_skeleton()
