@@ -99,6 +99,52 @@ class EngineManager:
             f"All engines blocked for {profile_id}/{list_type} with zero profiles collected"
         )
 
+    def _try_cookie_handoff(self, target_engine) -> bool:
+        """Inject cookies from an already-logged-in Selenium engine into
+        `target_engine` via `login_with_cookies`.
+
+        Returns True on success. False if no handoff path exists or the
+        target engine raised — caller then falls back to regular login.
+
+        Motivation: HttpxEngine form-login is frequently blocked by IG
+        from burned IPs (403). When a Selenium engine in the same
+        cascade has a live driver with valid cookies, we can reuse them
+        verbatim — bypasses the form-login entirely and picks up where
+        the browser session left off.
+        """
+        if not hasattr(target_engine, 'login_with_cookies'):
+            return False
+        for other in self.engines:
+            if other is target_engine:
+                continue
+            driver = getattr(other, '_driver', None)
+            if driver is None:
+                continue
+            try:
+                cookies = driver.get_cookies()
+            except Exception as e:
+                logger.debug(
+                    f"cookie handoff: failed reading cookies from "
+                    f"{other.name}: {e}"
+                )
+                continue
+            if not cookies:
+                continue
+            try:
+                target_engine.login_with_cookies(cookies)
+                logger.info(
+                    f"cookie handoff: {target_engine.name} got "
+                    f"{len(cookies)} cookies from {other.name}"
+                )
+                return True
+            except Exception as e:
+                logger.warning(
+                    f"cookie handoff from {other.name} to "
+                    f"{target_engine.name} failed: {e}"
+                )
+                return False
+        return False
+
     def _get_sessions_iter(self):
         """Retorna lista de Sessions disponíveis, ou [None] se sem session_pool."""
         if self._session_pool is None:
@@ -139,17 +185,24 @@ class EngineManager:
         # (HttpxEngine/PlaywrightEngine tentam SessionCache primeiro, então é fast path).
         elif (self._default_credentials is not None
               and id(engine) not in self._logged_in_engines):
-            try:
-                username, password = self._default_credentials
-                logger.info(f"{engine.name}: on-demand login (cascata)")
-                engine.login(username, password)
+            username, password = self._default_credentials
+            # Fast path: se o engine aceita cookies de outro engine já logado
+            # (ex.: httpx recebendo cookies do Selenium), injetar direto.
+            # Evita um form-login extra que o IG frequentemente bloqueia em
+            # httpx e preserva a sessão quente do Selenium.
+            if self._try_cookie_handoff(engine):
                 self._logged_in_engines.add(id(engine))
-            except (AccountBlockedError, BlockedError) as e:
-                logger.warning(f"{engine.name}: on-demand login blocked: {e}")
-                return None
-            except Exception as e:
-                logger.warning(f"{engine.name}: on-demand login failed: {e}")
-                return None
+            else:
+                try:
+                    logger.info(f"{engine.name}: on-demand login (cascata)")
+                    engine.login(username, password)
+                    self._logged_in_engines.add(id(engine))
+                except (AccountBlockedError, BlockedError) as e:
+                    logger.warning(f"{engine.name}: on-demand login blocked: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"{engine.name}: on-demand login failed: {e}")
+                    return None
 
         # on_batch: atualiza set do orquestrador + salva checkpoint.
         # Importante: update in-place de `profiles` (set mutável) para
