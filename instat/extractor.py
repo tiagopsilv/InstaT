@@ -120,6 +120,11 @@ class InstaExtractor:
         self.timeout = timeout
         self._exporter = exporter
         self._imap_config = imap_config
+        # Stored for `get_*_with_rotation` to instantiate new extractors
+        # with consistent configuration when rotating through fallback
+        # accounts. Not part of the public API.
+        self._headless = headless
+        self._engine_names = list(engines or ['selenium'])
         if completion_threshold is not None and not (0 < completion_threshold <= 1):
             raise ValueError(
                 f"completion_threshold must be in (0, 1], got {completion_threshold}"
@@ -543,6 +548,191 @@ class InstaExtractor:
         return self._extract_until_complete(
             profile_id, 'following',
             target_fraction, max_retries, retry_wait_s, max_duration,
+        )
+
+    # ---------------- Rotation (account/proxy fallback) ----------------
+
+    @staticmethod
+    def _validate_fallback_accounts(
+        fallback_accounts: Optional[List[Dict[str, str]]],
+    ) -> List[Dict[str, str]]:
+        """Fail-fast validation. No silent drops."""
+        if not fallback_accounts:
+            return []
+        out = []
+        for i, acc in enumerate(fallback_accounts):
+            if not isinstance(acc, dict):
+                raise ValueError(
+                    f"fallback_accounts[{i}]: expected dict, got {type(acc).__name__}"
+                )
+            u = acc.get('username')
+            p = acc.get('password')
+            if not (isinstance(u, str) and u and isinstance(p, str) and p):
+                raise ValueError(
+                    f"fallback_accounts[{i}]: requires non-empty 'username' "
+                    "and 'password' strings"
+                )
+            out.append({'username': u, 'password': p})
+        return out
+
+    def _extract_with_rotation(
+        self, profile_id: str, list_type: str,
+        fallback_accounts: Optional[List[Dict[str, str]]],
+        fallback_proxies: Optional[List[str]],
+        target_fraction: float,
+        max_retries_per_account: int,
+        retry_wait_s: float,
+        max_duration: Optional[float],
+    ) -> List[str]:
+        _validate_profile_id(profile_id)
+        fallbacks = self._validate_fallback_accounts(fallback_accounts)
+        proxies_list = list(fallback_proxies or [])
+        if not 0 < target_fraction <= 1:
+            raise ValueError(
+                f"target_fraction must be in (0, 1], got {target_fraction}"
+            )
+
+        accumulated: set = set()
+
+        # Phase 1: current account (self)
+        first = self._extract_until_complete(
+            profile_id, list_type,
+            target_fraction, max_retries_per_account,
+            retry_wait_s, max_duration,
+        )
+        accumulated.update(first)
+
+        total = None
+        try:
+            total = self._engine_manager.get_total_count(profile_id, list_type)
+        except Exception as e:
+            logger.debug(f"rotation: get_total_count failed: {e}")
+
+        def _target_hit() -> bool:
+            return bool(total) and len(accumulated) >= int(total * target_fraction)
+
+        if _target_hit() or not fallbacks:
+            return sorted(accumulated)
+
+        # Phase 2: rotate through fallback accounts. Each one gets its
+        # own InstaExtractor (fresh login, fresh driver, fresh session).
+        # Proxy pairing is positional and optional.
+        for idx, acc in enumerate(fallbacks):
+            proxy = proxies_list[idx] if idx < len(proxies_list) else None
+            logger.info(
+                f"rotation: trying fallback account #{idx + 1}/"
+                f"{len(fallbacks)} '{acc['username']}' "
+                f"{'with proxy ' + proxy if proxy else 'no proxy'} "
+                f"(have {len(accumulated)}"
+                f"{' /' + str(total) if total else ''})"
+            )
+            try:
+                alt = self._build_rotation_extractor(
+                    acc['username'], acc['password'], proxy,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"rotation: account '{acc['username']}' setup failed: "
+                    f"{type(e).__name__}: {e} — skipping"
+                )
+                continue
+            try:
+                new_profiles = alt._extract_until_complete(
+                    profile_id, list_type,
+                    target_fraction, max_retries_per_account,
+                    retry_wait_s, max_duration,
+                )
+                accumulated.update(new_profiles)
+                if _target_hit():
+                    logger.info(
+                        f"rotation: target reached via '{acc['username']}' "
+                        f"({len(accumulated)}/{total})"
+                    )
+                    return sorted(accumulated)
+            except Exception as e:
+                logger.warning(
+                    f"rotation: '{acc['username']}' extraction failed: "
+                    f"{type(e).__name__}: {e}"
+                )
+            finally:
+                try:
+                    alt.quit()
+                except Exception:
+                    pass
+
+        if total and len(accumulated) < int(total * target_fraction):
+            logger.warning(
+                f"rotation: exhausted {len(fallbacks) + 1} account(s), "
+                f"final coverage {len(accumulated)}/{total} "
+                f"({100 * len(accumulated) / total:.1f}%). "
+                "Consider more accounts or longer cooldown."
+            )
+        return sorted(accumulated)
+
+    def _build_rotation_extractor(
+        self, username: str, password: str, proxy: Optional[str],
+    ) -> "InstaExtractor":
+        """Factory for fresh extractors during rotation.
+
+        Inherits imap_config, engines, completion_threshold, timeout and
+        headless from `self`. Each call performs a full login (may
+        trigger IMAP challenge). Caller is responsible for .quit().
+        """
+        return InstaExtractor(
+            username=username, password=password,
+            headless=self._headless,
+            timeout=self.timeout,
+            proxies=[proxy] if proxy else None,
+            engines=list(self._engine_names),
+            imap_config=self._imap_config,
+            completion_threshold=self._completion_threshold_override,
+        )
+
+    def get_followers_with_rotation(
+        self, profile_id: str, *,
+        fallback_accounts: Optional[List[Dict[str, str]]] = None,
+        fallback_proxies: Optional[List[str]] = None,
+        target_fraction: float = 0.90,
+        max_retries_per_account: int = 2,
+        retry_wait_s: float = 60.0,
+        max_duration: Optional[float] = None,
+    ) -> List[str]:
+        """Extrai followers com rotação serial por contas/proxies.
+
+        Roda o extractor atual via `get_followers_until_complete`. Se a
+        cobertura final ficar abaixo de `target_fraction` (shadow-rate-
+        limit padrão), repete com cada `fallback_accounts` em sequência
+        — cada uma em um InstaExtractor novo (novo login). Retorna a
+        união acumulada entre todos.
+
+        fallback_accounts: lista de {'username', 'password'} a tentar
+          após self. Passwords ficam apenas em memória. Segurança
+          idêntica à kwarg `accounts` do construtor.
+        fallback_proxies: pareamento posicional com fallback_accounts.
+          Menos proxies que contas = resto das contas sem proxy.
+        """
+        return self._extract_with_rotation(
+            profile_id, 'followers',
+            fallback_accounts, fallback_proxies,
+            target_fraction, max_retries_per_account,
+            retry_wait_s, max_duration,
+        )
+
+    def get_following_with_rotation(
+        self, profile_id: str, *,
+        fallback_accounts: Optional[List[Dict[str, str]]] = None,
+        fallback_proxies: Optional[List[str]] = None,
+        target_fraction: float = 0.90,
+        max_retries_per_account: int = 2,
+        retry_wait_s: float = 60.0,
+        max_duration: Optional[float] = None,
+    ) -> List[str]:
+        """Idem `get_followers_with_rotation` para following."""
+        return self._extract_with_rotation(
+            profile_id, 'following',
+            fallback_accounts, fallback_proxies,
+            target_fraction, max_retries_per_account,
+            retry_wait_s, max_duration,
         )
 
     def get_followers_parallel(self, profile_id: str,
