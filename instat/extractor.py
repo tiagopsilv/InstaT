@@ -420,6 +420,12 @@ class InstaExtractor:
 
         target = int((total or 0) * target_fraction)
         accumulated: set = set()
+        # P4: skip engine that has rate-limited in 2+ consecutive
+        # iterations. Saves wall-clock (~1-2s per rate-limited engine
+        # per iteration) and avoids reinforcing IG's pattern detection.
+        rate_limit_streak: Dict[str, int] = {}
+        excluded_engines: set = set()
+        STREAK_BEFORE_EXCLUDE = 2
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 logger.info(
@@ -429,9 +435,12 @@ class InstaExtractor:
                 )
                 time.sleep(retry_wait_s)
             raised = False
+            rate_limited_this_iter: List[str] = []
             try:
                 iteration = self._extract_with_export(
-                    profile_id, list_type, max_duration
+                    profile_id, list_type, max_duration,
+                    _exclude_engines=excluded_engines or None,
+                    _rate_limit_sink=rate_limited_this_iter,
                 )
             except Exception as e:
                 logger.warning(
@@ -444,6 +453,23 @@ class InstaExtractor:
             before = len(accumulated)
             accumulated.update(iteration)
             after = len(accumulated)
+            # Update rate-limit streak. Engines that did NOT rate-limit
+            # this iteration reset their streak. Newly-offending engines
+            # get incremented. At STREAK_BEFORE_EXCLUDE, exclude.
+            limited_set = set(rate_limited_this_iter)
+            for name in list(rate_limit_streak.keys()):
+                if name not in limited_set:
+                    del rate_limit_streak[name]
+            for name in limited_set:
+                rate_limit_streak[name] = rate_limit_streak.get(name, 0) + 1
+                if (rate_limit_streak[name] >= STREAK_BEFORE_EXCLUDE
+                        and name not in excluded_engines):
+                    excluded_engines.add(name)
+                    logger.info(
+                        f"until_complete: excluding '{name}' from further "
+                        f"retries — rate-limited "
+                        f"{rate_limit_streak[name]}× in a row"
+                    )
             if total and after >= target:
                 logger.info(
                     f"until_complete: hit target {after}/{total} "
@@ -673,12 +699,27 @@ class InstaExtractor:
         return self._engine_manager.get_total_count(profile_id, list_type)
 
     def _extract_with_export(self, profile_id: str, list_type: str,
-                             max_duration: Optional[float]) -> List[str]:
-        """Extrai e, se self._exporter configurado, exporta com metadata."""
+                             max_duration: Optional[float],
+                             _exclude_engines=None,
+                             _rate_limit_sink=None) -> List[str]:
+        """Extrai e, se self._exporter configurado, exporta com metadata.
+
+        _exclude_engines / _rate_limit_sink: kwargs internos usados por
+        `_extract_until_complete` para pular engines que deram
+        rate-limit repetido e observar quais engines continuam dando
+        rate-limit nesta iteração. Underscore-prefixed porque não
+        são API pública — não documentar fora daqui.
+        """
         start_ts = time.time()
         start_perf = time.perf_counter()
+        extract_kwargs = {}
+        if _exclude_engines:
+            extract_kwargs['exclude_engines'] = _exclude_engines
+        if _rate_limit_sink is not None:
+            extract_kwargs['rate_limit_sink'] = _rate_limit_sink
         result = self._engine_manager.extract(
-            profile_id, list_type, max_duration=max_duration
+            profile_id, list_type, max_duration=max_duration,
+            **extract_kwargs,
         )
         duration = time.perf_counter() - start_perf
 

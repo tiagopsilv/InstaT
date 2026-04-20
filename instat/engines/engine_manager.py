@@ -2,7 +2,7 @@
 Orquestrador de extração com fallbacks completos.
 Integra engines, session pool, proxy pool, checkpoint e backoff.
 """
-from typing import List, Optional, Set
+from typing import Iterable, List, Optional, Set
 
 from loguru import logger
 
@@ -60,12 +60,23 @@ class EngineManager:
                     f"{[e.name for e in self.engines]}{pool_info}")
 
     def extract(self, profile_id: str, list_type: str,
-                max_duration: Optional[float] = None, **kwargs) -> list:
+                max_duration: Optional[float] = None,
+                exclude_engines: Optional[Iterable[str]] = None,
+                rate_limit_sink: Optional[List[str]] = None,
+                **kwargs) -> list:
         """
         Orquestrador completo de extração com fallbacks.
 
         Retorna list(profiles) parcial ou completo.
         Levanta AllEnginesBlockedError apenas se nada foi coletado.
+
+        exclude_engines: iterable de nomes de engine a pular nesta
+          chamada. Útil para `until_complete` ignorar engines que deram
+          rate-limit consistente em iterações anteriores.
+        rate_limit_sink: se fornecido, recebe via append() o nome de
+          cada engine que levantar RateLimitError durante esta chamada.
+          Permite ao chamador detectar padrões persistentes sem precisar
+          parsear logs.
         """
         checkpoint = ExtractionCheckpoint(profile_id, list_type)
         profiles: Set[str] = checkpoint.load() or set()
@@ -73,14 +84,23 @@ class EngineManager:
             logger.info(f"EngineManager: resumed {len(profiles)} profiles from checkpoint")
 
         backoff = SmartBackoff()
+        excluded = set(exclude_engines or ())
 
         for engine in self.engines:
+            if engine.name in excluded:
+                logger.info(
+                    f"EngineManager: skipping {engine.name} "
+                    "(caller-excluded for this run)"
+                )
+                continue
             sessions = self._get_sessions_iter()
             for session in sessions:
                 result = self._try_engine_session(
                     engine, session, profile_id, list_type,
                     profiles, checkpoint, backoff,
-                    max_duration=max_duration, **kwargs
+                    max_duration=max_duration,
+                    rate_limit_sink=rate_limit_sink,
+                    **kwargs
                 )
                 if result is not None:
                     checkpoint.clear()
@@ -206,7 +226,9 @@ class EngineManager:
 
     def _try_engine_session(self, engine, session, profile_id, list_type,
                             profiles: Set[str], checkpoint, backoff,
-                            max_duration=None, **kwargs):
+                            max_duration=None,
+                            rate_limit_sink: Optional[List[str]] = None,
+                            **kwargs):
         """
         Tenta 1 (engine, session) pair. Retorna profiles (set) em sucesso, None em falha.
         Atualiza `profiles` in-place em sucesso.
@@ -280,6 +302,8 @@ class EngineManager:
             checkpoint.save(profiles)
             if session is not None and self._session_pool is not None:
                 self._session_pool.mark_blocked(session, SessionPool.DEFAULT_COOLDOWN)
+            if rate_limit_sink is not None:
+                rate_limit_sink.append(engine.name)
             backoff.wait()
             return None
         except AccountBlockedError as e:
