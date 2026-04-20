@@ -434,9 +434,6 @@ class InstaExtractor:
                     profile_id, list_type, max_duration
                 )
             except Exception as e:
-                # Proteção: uma iteração que crasha (Firefox morto, etc.)
-                # não significa que o IG está realmente estagnado. Preserva
-                # o acumulado e segue tentando — não conta como estagnação.
                 logger.warning(
                     f"until_complete: attempt {attempt} raised "
                     f"{type(e).__name__}: {e} — keeping accumulated "
@@ -460,8 +457,37 @@ class InstaExtractor:
                     f"until_complete: no new profiles after retry (stuck at "
                     f"{after}) — stopping to avoid burning rate-limit"
                 )
+                self._log_account_blocked_diagnostic(
+                    list_type, after, total, attempt + 1,
+                )
                 return sorted(accumulated)
+        self._log_account_blocked_diagnostic(
+            list_type, len(accumulated), total, max_retries + 1,
+        )
         return sorted(accumulated)
+
+    def _log_account_blocked_diagnostic(
+        self, list_type: str, collected: int, total: Optional[int],
+        attempts: int,
+    ) -> None:
+        """Emit actionable advice when coverage is catastrophically low.
+
+        Triggered only when we have a total and collected < 1% of it.
+        The message guides the user toward the only realistic fixes:
+        different account, proxy pool, or long cooldown.
+        """
+        if not total or collected >= max(1, int(total * 0.01)):
+            return
+        engines = [e.name for e in self._engine_manager.engines]
+        pct = (collected / total) if total else 0
+        logger.warning(
+            f"until_complete: {list_type} coverage {collected}/{total} "
+            f"({100*pct:.2f}%) after {attempts} attempt(s) across "
+            f"engines {engines}. This pattern usually means the "
+            "Instagram account is shadow-rate-limited for this specific "
+            "target. Consider: (a) different IG account, (b) add proxies, "
+            "(c) cool down for 6+ hours before retrying."
+        )
 
     def get_followers_until_complete(
         self, profile_id: str, *,

@@ -314,5 +314,93 @@ class TestUntilCompleteLoop(unittest.TestCase):
             ext.get_followers_until_complete('user?q=1')
 
 
+class TestAccountBlockedDiagnostic(unittest.TestCase):
+    """until_complete logs actionable advice when coverage stays below 1%."""
+
+    def test_warning_emitted_at_low_coverage(self):
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = 10000
+        ext._engine_manager.engines = [
+            MagicMock(name='selenium'), MagicMock(name='httpx'),
+        ]
+        ext._engine_manager.engines[0].name = 'selenium'
+        ext._engine_manager.engines[1].name = 'httpx'
+
+        sequence = iter([
+            ['u%d' % i for i in range(30)],
+            ['u%d' % i for i in range(30)],
+            ['u%d' % i for i in range(30)],
+        ])
+
+        captured = []
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
+             patch('instat.extractor.time.sleep'), \
+             patch('instat.extractor.logger') as mock_logger:
+            mock_logger.warning.side_effect = lambda msg, *a, **k: captured.append(
+                msg % a if a else msg
+            )
+            ext.get_following_until_complete(
+                'user', target_fraction=0.95, max_retries=2, retry_wait_s=0,
+            )
+
+        joined = "\n".join(str(c) for c in captured)
+        # Diagnostic should mention engines tried, shadow-rate-limit, and
+        # at least one actionable suggestion.
+        self.assertIn('selenium', joined)
+        self.assertIn('httpx', joined)
+        self.assertIn('shadow', joined.lower())
+
+    def test_no_warning_when_coverage_above_1_percent(self):
+        """Don't spam the warning when user hit a soft block but still got
+        a lot of the list."""
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = 1000
+        ext._engine_manager.engines = [MagicMock(name='selenium')]
+        ext._engine_manager.engines[0].name = 'selenium'
+
+        sequence = iter([
+            ['u%d' % i for i in range(500)],
+            ['u%d' % i for i in range(500)],
+        ])
+
+        captured = []
+        with patch.object(ext, '_extract_with_export',
+                          side_effect=lambda *a, **kw: next(sequence)), \
+             patch('instat.extractor.time.sleep'), \
+             patch('instat.extractor.logger') as mock_logger:
+            mock_logger.warning.side_effect = lambda msg, *a, **k: captured.append(
+                msg % a if a else msg
+            )
+            ext.get_following_until_complete(
+                'user', target_fraction=0.95, max_retries=2, retry_wait_s=0,
+            )
+
+        joined = "\n".join(str(c) for c in captured)
+        self.assertNotIn('shadow', joined.lower())
+
+    def test_no_warning_when_total_unknown(self):
+        """Can't compute percentage → skip the diagnostic."""
+        ext = _make_extractor_skeleton()
+        ext._engine_manager.get_total_count.return_value = None
+        ext._engine_manager.engines = [MagicMock(name='selenium')]
+        ext._engine_manager.engines[0].name = 'selenium'
+
+        captured = []
+        with patch.object(ext, '_extract_with_export',
+                          return_value=['a', 'b']), \
+             patch('instat.extractor.time.sleep'), \
+             patch('instat.extractor.logger') as mock_logger:
+            mock_logger.warning.side_effect = lambda msg, *a, **k: captured.append(
+                msg % a if a else msg
+            )
+            ext.get_following_until_complete(
+                'user', target_fraction=0.95, max_retries=1, retry_wait_s=0,
+            )
+
+        joined = "\n".join(str(c) for c in captured)
+        self.assertNotIn('shadow', joined.lower())
+
+
 if __name__ == '__main__':
     unittest.main()
