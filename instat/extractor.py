@@ -95,18 +95,28 @@ class InstaExtractor:
                  accounts: Optional[List[Dict[str, str]]] = None,
                  engines: Optional[List[str]] = None,
                  exporter: Optional[BaseExporter] = None,
-                 imap_config=None) -> None:
+                 imap_config=None,
+                 completion_threshold: Optional[float] = None) -> None:
         """
         engines: lista de nomes ['selenium', 'playwright', 'httpx']. Default: ['selenium'].
         exporter: exporter opcional chamado após cada extração bem-sucedida.
         imap_config: dict com host/user/password/port/... para resolver o
           challenge 'Check your email' do Instagram via IMAP automaticamente.
+        completion_threshold: fração mínima (0..1) da contagem esperada que
+          o engine aceita como sucesso. Abaixo levanta BlockedError para a
+          cascata tentar o próximo engine. Default None mantém o default do
+          engine (SeleniumEngine usa 0.90).
         """
         self.username = username
         self.password = password
         self.timeout = timeout
         self._exporter = exporter
         self._imap_config = imap_config
+        if completion_threshold is not None and not (0 < completion_threshold <= 1):
+            raise ValueError(
+                f"completion_threshold must be in (0, 1], got {completion_threshold}"
+            )
+        self._completion_threshold_override = completion_threshold
 
         proxy_pool = None
         if proxies:
@@ -129,6 +139,12 @@ class InstaExtractor:
             for eng in engine_instances:
                 if hasattr(eng, '_imap_config'):
                     eng._imap_config = imap_config
+
+        # Propaga completion_threshold se o usuário passou.
+        if self._completion_threshold_override is not None:
+            for eng in engine_instances:
+                if hasattr(eng, 'completion_threshold'):
+                    eng.completion_threshold = self._completion_threshold_override
 
         logger.info("Initializing InstaExtractor with username: {}", username)
 
@@ -341,6 +357,90 @@ class InstaExtractor:
         """Returns a list of accounts that the given profile id is following."""
         _validate_profile_id(profile_id)
         return self._extract_with_export(profile_id, 'following', max_duration)
+
+    def _extract_until_complete(self, profile_id: str, list_type: str,
+                                target_fraction: float, max_retries: int,
+                                retry_wait_s: float,
+                                max_duration: Optional[float]) -> List[str]:
+        """Loop de retry auto-resume: chama extract até atingir cobertura
+        alvo, estagnar, ou esgotar retries.
+
+        Funciona porque EngineManager preserva o checkpoint em
+        BlockedError (só faz checkpoint.clear em sucesso total), então
+        cada iteração prossegue de onde a anterior parou.
+        """
+        if not 0 < target_fraction <= 1:
+            raise ValueError(
+                f"target_fraction must be in (0, 1], got {target_fraction}"
+            )
+        if max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {max_retries}")
+
+        total = None
+        try:
+            total = self._engine_manager.get_total_count(profile_id, list_type)
+        except Exception as e:
+            logger.debug(f"until_complete: get_total_count failed: {e}")
+
+        target = int((total or 0) * target_fraction)
+        last_count = 0
+        result: List[str] = []
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                logger.info(
+                    f"until_complete: retry {attempt}/{max_retries} after "
+                    f"{retry_wait_s}s (have {last_count}"
+                    f"{' /' + str(total) if total else ''})"
+                )
+                time.sleep(retry_wait_s)
+            result = self._extract_with_export(
+                profile_id, list_type, max_duration
+            )
+            count = len(result)
+            if total and count >= target:
+                logger.info(
+                    f"until_complete: hit target {count}/{total} "
+                    f"(>= {target_fraction:.0%})"
+                )
+                return result
+            if attempt > 0 and count <= last_count:
+                logger.info(
+                    f"until_complete: stagnated at {count} after retry — "
+                    "stopping to avoid burning rate-limit"
+                )
+                return result
+            last_count = count
+        return result
+
+    def get_followers_until_complete(
+        self, profile_id: str, *,
+        target_fraction: float = 0.95,
+        max_retries: int = 3,
+        retry_wait_s: float = 90.0,
+        max_duration: Optional[float] = None,
+    ) -> List[str]:
+        """Extrai followers com retries auto-resume até atingir
+        target_fraction da contagem total, estagnar, ou esgotar retries."""
+        _validate_profile_id(profile_id)
+        return self._extract_until_complete(
+            profile_id, 'followers',
+            target_fraction, max_retries, retry_wait_s, max_duration,
+        )
+
+    def get_following_until_complete(
+        self, profile_id: str, *,
+        target_fraction: float = 0.95,
+        max_retries: int = 3,
+        retry_wait_s: float = 90.0,
+        max_duration: Optional[float] = None,
+    ) -> List[str]:
+        """Extrai following com retries auto-resume até atingir
+        target_fraction da contagem total, estagnar, ou esgotar retries."""
+        _validate_profile_id(profile_id)
+        return self._extract_until_complete(
+            profile_id, 'following',
+            target_fraction, max_retries, retry_wait_s, max_duration,
+        )
 
     def get_followers_parallel(self, profile_id: str,
                                workers: int = 2,
