@@ -77,6 +77,14 @@ class SeleniumEngine(BaseEngine):
         self.pause_time = SCROLL_PAUSE
         self.max_attempts = 2
         self.max_retry_without_new_profiles = 3
+        # Warmup anti-falso-positivo para targets populares. Até
+        # `warmup_threshold` perfis coletados, tolera até
+        # `warmup_stale_rounds` rounds vazios antes de disparar reopen
+        # (default MAX_STALE_ROUNDS=4). Valores pequenos preservam o
+        # comportamento atual; grandes evitam "rate limit suspected" a
+        # 50 profiles num alvo de 850k.
+        self.warmup_threshold = 200
+        self.warmup_stale_rounds = 10
         self._backoff = SmartBackoff()
         self.checkpoint_interval = 100
         # PERF-02: cobertura abaixo deste threshold levanta BlockedError
@@ -307,8 +315,13 @@ class SeleniumEngine(BaseEngine):
         profile_selector = self._selectors.get("PROFILE_USERNAME_SPAN")
         stale_rounds = 0
         reopen_attempts = 0
-        MAX_STALE_ROUNDS = 4  # 4 ciclos sem novos → tenta reopen OU encerra
-        MAX_REOPEN_ATTEMPTS = 3  # PERF-03: tenta reopen modal até 3x
+        # Targets populares (milhões de followers) costumam demorar a
+        # começar a render itens — se esgotar MAX_STALE_ROUNDS durante
+        # o warmup, perdemos a extração antes de sequer começar.
+        # Durante os primeiros `warmup_threshold` perfis, usamos um
+        # limite maior (warmup_stale_rounds) antes de declarar rate-limit.
+        MAX_STALE_ROUNDS = 4
+        MAX_REOPEN_ATTEMPTS = 3
 
         while True:
             if self._is_max_duration_exceeded(start_time, max_duration):
@@ -352,8 +365,19 @@ class SeleniumEngine(BaseEngine):
 
             if new_added == 0:
                 stale_rounds += 1
-                logger.debug(f"No new profiles in this round. Stale rounds: {stale_rounds}/{MAX_STALE_ROUNDS}")
-                if stale_rounds >= MAX_STALE_ROUNDS:
+                # Warmup: tolera mais rounds vazios enquanto a coleta ainda
+                # é rasa. Lista nova de seguidores/seguindo em target
+                # popular pode levar vários scrolls antes de devolver itens.
+                in_warmup = len(unique_profiles) < self.warmup_threshold
+                effective_limit = (
+                    self.warmup_stale_rounds if in_warmup else MAX_STALE_ROUNDS
+                )
+                logger.debug(
+                    f"No new profiles in this round. Stale rounds: "
+                    f"{stale_rounds}/{effective_limit}"
+                    f"{' (warmup)' if in_warmup else ''}"
+                )
+                if stale_rounds >= effective_limit:
                     # PERF-03 Solução G: rate limit detectado — tenta reopen modal
                     # para reset do cursor de paginação do Instagram.
                     if (profile_id and list_type
