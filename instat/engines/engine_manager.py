@@ -146,11 +146,34 @@ class EngineManager:
                 )
                 continue
             if not cookies:
-                logger.debug(
-                    f"cookie handoff[{target_name}]: {other_name} "
-                    f"returned empty cookies"
-                )
-                continue
+                # Selenium's get_cookies() is scoped to the current document.
+                # _reset_page_state() navigates to about:blank after a failed
+                # extraction, which makes IG cookies invisible. Navigate back
+                # to the IG domain to bring them into scope.
+                current = ""
+                try:
+                    current = driver.current_url or ""
+                except Exception:
+                    pass
+                if 'instagram.com' not in current:
+                    try:
+                        logger.debug(
+                            f"cookie handoff[{target_name}]: {other_name} "
+                            f"is at {current[:60]!r}, re-navigating to IG "
+                            "to expose cookies"
+                        )
+                        driver.get("https://www.instagram.com/")
+                        cookies = driver.get_cookies()
+                    except Exception as e:
+                        logger.debug(
+                            f"cookie handoff[{target_name}]: re-nav failed: {e}"
+                        )
+                if not cookies:
+                    logger.debug(
+                        f"cookie handoff[{target_name}]: {other_name} "
+                        f"returned empty cookies"
+                    )
+                    continue
             try:
                 target_engine.login_with_cookies(cookies)
                 logger.info(

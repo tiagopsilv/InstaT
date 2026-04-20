@@ -151,6 +151,62 @@ class TestCookieHandoff(unittest.TestCase):
         playwright.login.assert_called_once_with('u', 'p')
 
 
+class TestHandoffRenavigatesOnAboutBlank(unittest.TestCase):
+    """When Selenium has been reset to about:blank (post-extract cleanup),
+    driver.get_cookies() returns []. Handoff should navigate to IG and
+    retry — otherwise the httpx cascade silently falls back to form-login."""
+
+    def test_empty_cookies_triggers_reload_and_retry(self):
+        from instat.engines.engine_manager import EngineManager
+
+        # httpx mock that accepts cookies
+        httpx_eng = MagicMock()
+        httpx_eng.name = 'httpx'
+        httpx_eng.login_with_cookies = MagicMock(return_value=True)
+        del httpx_eng._driver
+
+        # selenium mock: first get_cookies empty, current_url about:blank,
+        # after driver.get("instagram.com") second get_cookies returns real cookies.
+        selenium_eng = MagicMock()
+        selenium_eng.name = 'selenium'
+        selenium_eng._driver = MagicMock()
+        selenium_eng._driver.current_url = "about:blank"
+        real_cookies = [
+            {'name': 'sessionid', 'value': 'abc'},
+            {'name': 'csrftoken', 'value': 'xyz'},
+        ]
+        selenium_eng._driver.get_cookies.side_effect = [[], real_cookies]
+
+        mgr = EngineManager([selenium_eng, httpx_eng])
+        result = mgr._try_cookie_handoff(httpx_eng)
+
+        self.assertTrue(result)
+        # The navigate-back to IG must have happened
+        selenium_eng._driver.get.assert_called_with("https://www.instagram.com/")
+        # Cookies delivered were the real ones (2nd get_cookies call)
+        httpx_eng.login_with_cookies.assert_called_once_with(real_cookies)
+
+    def test_no_renavigate_when_already_on_instagram(self):
+        from instat.engines.engine_manager import EngineManager
+
+        httpx_eng = MagicMock()
+        httpx_eng.name = 'httpx'
+        httpx_eng.login_with_cookies = MagicMock(return_value=True)
+        del httpx_eng._driver
+
+        selenium_eng = MagicMock()
+        selenium_eng.name = 'selenium'
+        selenium_eng._driver = MagicMock()
+        selenium_eng._driver.current_url = "https://www.instagram.com/foo/"
+        selenium_eng._driver.get_cookies.return_value = []
+
+        mgr = EngineManager([selenium_eng, httpx_eng])
+        mgr._try_cookie_handoff(httpx_eng)
+
+        # Already on IG but cookies still empty — no re-nav, just continues.
+        selenium_eng._driver.get.assert_not_called()
+
+
 class TestHandoffDiagnosticLogging(unittest.TestCase):
     """Every early-return path in _try_cookie_handoff must log."""
 
