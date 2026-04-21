@@ -740,6 +740,149 @@ class InstaExtractor:
             retry_wait_s, max_duration,
         )
 
+    # ---------- Persistent multi-run accrual (large targets) ----------
+
+    def _extract_persistent(
+        self, profile_id: str, list_type: str,
+        store_path: str,
+        fallback_accounts: Optional[List[Dict[str, str]]],
+        fallback_proxies: Optional[List[str]],
+        max_retries_per_account: int,
+        retry_wait_s: float,
+        max_duration: Optional[float],
+    ) -> Dict[str, object]:
+        _validate_profile_id(profile_id)
+        try:
+            from instat.persistent_store import PersistentStore
+        except ImportError:
+            from persistent_store import PersistentStore  # type: ignore
+
+        store = PersistentStore(store_path)
+        before_count = store.count(profile_id, list_type)
+        run_started_at = time.time()
+
+        # Decide which extract flavor to run: with_rotation if fallbacks
+        # given, else until_complete.
+        if fallback_accounts:
+            this_run = self._extract_with_rotation(
+                profile_id, list_type,
+                fallback_accounts, fallback_proxies,
+                target_fraction=1.0,   # persistent mode never wants
+                                       # to short-circuit on target —
+                                       # we take whatever we can.
+                max_retries_per_account=max_retries_per_account,
+                retry_wait_s=retry_wait_s,
+                max_duration=max_duration,
+            )
+            # rotation itself reuses self.username, then fallbacks.
+            # We record self's contribution under self.username and
+            # fallbacks' contributions under their own names — but
+            # we only see the union here, no per-account split.
+            # Simpler: tag everything as 'rotation:<primary>'.
+            store.add_batch(
+                profile_id, list_type, this_run,
+                source_account=f"rotation:{self.username}",
+            )
+        else:
+            this_run = self._extract_until_complete(
+                profile_id, list_type,
+                target_fraction=1.0,
+                max_retries=max_retries_per_account,
+                retry_wait_s=retry_wait_s,
+                max_duration=max_duration,
+            )
+            store.add_batch(
+                profile_id, list_type, this_run,
+                source_account=self.username,
+            )
+
+        after_count = store.count(profile_id, list_type)
+        delta = after_count - before_count
+        delta_list = store.get_delta_since(
+            profile_id, list_type, run_started_at,
+        )
+
+        total_target = None
+        try:
+            total_target = self._engine_manager.get_total_count(
+                profile_id, list_type,
+            )
+        except Exception:
+            pass
+
+        stats = store.stats(profile_id, list_type)
+        pct = None
+        if total_target:
+            pct = 100 * after_count / total_target
+            logger.info(
+                f"persistent[{list_type}]: run added {delta} new "
+                f"(this call collected {len(this_run)}). "
+                f"Store now {after_count} / target {total_target} "
+                f"({pct:.2f}%). Sources: {stats['source_accounts']}"
+            )
+        else:
+            logger.info(
+                f"persistent[{list_type}]: run added {delta} new "
+                f"(this call collected {len(this_run)}). "
+                f"Store now {after_count}. "
+                f"Sources: {stats['source_accounts']}"
+            )
+
+        return {
+            'store_path': store.path,
+            'store_total': after_count,
+            'store_total_before_run': before_count,
+            'this_run_collected': len(this_run),
+            'this_run_new': delta,
+            'this_run_new_usernames': delta_list,
+            'target_total': total_target,
+            'target_coverage_pct': pct,
+            'source_accounts': stats['source_accounts'],
+        }
+
+    def get_followers_persistent(
+        self, profile_id: str, *,
+        store_path: str,
+        fallback_accounts: Optional[List[Dict[str, str]]] = None,
+        fallback_proxies: Optional[List[str]] = None,
+        max_retries_per_account: int = 2,
+        retry_wait_s: float = 60.0,
+        max_duration: Optional[float] = None,
+    ) -> Dict[str, object]:
+        """Extrai followers acumulando em SQLite persistente entre runs.
+
+        Uso típico: schedule uma chamada por dia (cron / GitHub Actions
+        / Airflow). Cada chamada adiciona o que conseguir ao store,
+        sem expiry. Alvos de 850k tornam-se viáveis ao longo de semanas
+        sem queimar contas.
+
+        store_path: arquivo SQLite. Será criado com chmod 0600 no 1º run.
+        Outros kwargs: repassados para until_complete / with_rotation.
+
+        Retorna dict com métricas da run + totais acumulados.
+        """
+        return self._extract_persistent(
+            profile_id, 'followers', store_path,
+            fallback_accounts, fallback_proxies,
+            max_retries_per_account, retry_wait_s, max_duration,
+        )
+
+    def get_following_persistent(
+        self, profile_id: str, *,
+        store_path: str,
+        fallback_accounts: Optional[List[Dict[str, str]]] = None,
+        fallback_proxies: Optional[List[str]] = None,
+        max_retries_per_account: int = 2,
+        retry_wait_s: float = 60.0,
+        max_duration: Optional[float] = None,
+    ) -> Dict[str, object]:
+        """Idem `get_followers_persistent` para following."""
+        return self._extract_persistent(
+            profile_id, 'following', store_path,
+            fallback_accounts, fallback_proxies,
+            max_retries_per_account, retry_wait_s, max_duration,
+        )
+
     def get_followers_parallel(self, profile_id: str,
                                workers: int = 2,
                                accounts: Optional[List[Dict[str, str]]] = None,
