@@ -219,6 +219,10 @@ class TestLoginChallengeIntegration(unittest.TestCase):
     """_try_handle_email_challenge usa imap_config, seletores e driver."""
 
     def _make_login(self, imap_config=None):
+        from instat.challenge_resolvers import (
+            ChallengeResolverChain,
+            EmailChallengeResolver,
+        )
         from instat.login import InstaLogin
         obj = InstaLogin.__new__(InstaLogin)
         obj._imap_config = imap_config
@@ -226,9 +230,18 @@ class TestLoginChallengeIntegration(unittest.TestCase):
         obj.selectors = MagicMock()
         obj.selectors.get_all.side_effect = lambda key: {
             'EMAIL_CHALLENGE_HEADING': ["h2[aria-label='Check your email']"],
+            'EMAIL_CHALLENGE_GET_NEW_CODE': ["//span[@label='Get a new code']"],
             'EMAIL_CHALLENGE_INPUT': ["input[aria-label='Enter code']"],
             'EMAIL_CHALLENGE_CONTINUE': ["//div[@role='button' and @aria-label='Continue']"],
         }[key]
+        # Wire up the challenge chain the same way __init__ would.
+        obj._challenge_chain = ChallengeResolverChain([
+            EmailChallengeResolver(
+                selector_loader=obj.selectors,
+                imap_config=imap_config,
+                timeout=obj.timeout,
+            ),
+        ])
         return obj
 
     def test_no_imap_config_returns_false(self):

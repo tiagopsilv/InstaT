@@ -7,7 +7,6 @@ from urllib.parse import urlsplit, urlunsplit
 from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import (
-    NoSuchElementException,
     TimeoutException,
     WebDriverException,
 )
@@ -30,6 +29,16 @@ try:
     from instat.block_detector import BlockDetector, BlockInfo
 except ImportError:
     from block_detector import BlockDetector, BlockInfo  # type: ignore
+try:
+    from instat.challenge_resolvers import (
+        ChallengeResolverChain,
+        EmailChallengeResolver,
+    )
+except ImportError:
+    from challenge_resolvers import (  # type: ignore
+        ChallengeResolverChain,
+        EmailChallengeResolver,
+    )
 
 # Setup Loguru logger for advanced logging
 logger.remove()
@@ -69,7 +78,7 @@ class InstaLogin:
 
     def __init__(self, username, password, headless=True, timeout=10,
                  session_cache=None, base_url=None, imap_config=None,
-                 block_detector=None):
+                 block_detector=None, challenge_chain=None):
         self.username = username
         self.password = password
         self.timeout = timeout
@@ -85,6 +94,24 @@ class InstaLogin:
         self.driver = self.init_driver(headless)
         self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
         self.selectors = SelectorLoader()
+        # challenge_chain is swappable: by default the chain contains
+        # EmailChallengeResolver wired to our selectors + imap_config.
+        # Callers can pass a chain with additional resolvers (new IG
+        # flows) without editing this class.
+        if challenge_chain is None:
+            challenge_chain = self._default_challenge_chain()
+        self._challenge_chain = challenge_chain
+
+    def _default_challenge_chain(self) -> ChallengeResolverChain:
+        """Factory for the builtin chain. Override in subclass or pass
+        a custom chain via constructor to add resolvers."""
+        return ChallengeResolverChain([
+            EmailChallengeResolver(
+                selector_loader=self.selectors,
+                imap_config=self._imap_config,
+                timeout=self.timeout,
+            ),
+        ])
 
     @staticmethod
     def _find_cached_geckodriver() -> str:
@@ -303,167 +330,12 @@ class InstaLogin:
             return False
 
     def _try_handle_email_challenge(self, driver) -> bool:
+        """Delegates to the challenge resolver chain.
+
+        Kept as a method for call-site compatibility; the actual
+        logic per-flow lives in instat/challenge_resolvers.py.
         """
-        Detecta a página 'Check your email' e preenche o código via IMAP.
-
-        Retorna True se resolveu o challenge, False se não havia challenge
-        ou não foi possível resolver (no último caso, deixa o fluxo normal
-        de detecção de bloqueio tratar).
-        """
-        if not self._imap_config:
-            return False
-        try:
-            from instat.email_code import ImapConfig, fetch_instagram_code
-        except ImportError:
-            from email_code import ImapConfig, fetch_instagram_code
-
-        # Detecta heading da página
-        headings = self.selectors.get_all("EMAIL_CHALLENGE_HEADING")
-        heading_found = False
-        for sel in headings:
-            try:
-                driver.find_element(By.CSS_SELECTOR, sel)
-                heading_found = True
-                break
-            except NoSuchElementException:
-                continue
-        if not heading_found:
-            return False
-
-        logger.info("Detected email verification challenge — requesting fresh code")
-        cfg = ImapConfig.from_dict(self._imap_config)
-        from datetime import datetime, timezone
-
-        # Clica em "Get a new code" para forçar IG a enviar código fresh,
-        # evitando pegar códigos já usados/expirados de tentativas anteriores.
-        new_code_clicked = False
-        for sel in self.selectors.get_all("EMAIL_CHALLENGE_GET_NEW_CODE"):
-            try:
-                el = driver.find_element(By.XPATH, sel)
-                try:
-                    el.click()
-                except Exception:
-                    driver.execute_script("arguments[0].click();", el)
-                new_code_clicked = True
-                logger.info("Clicked 'Get a new code' to trigger fresh email")
-                break
-            except NoSuchElementException:
-                continue
-
-        # Marca tempo ANTES de solicitar novo código; buscaremos apenas
-        # e-mails recebidos a partir daqui (garante código novo exclusivo
-        # desta sessão, não um residual de testes anteriores).
-        started_at = datetime.now(timezone.utc)
-        if new_code_clicked:
-            # Pequena espera para IG processar o clique e a SMTP entregar
-            human_delay(6.0, variance=1.0)
-        code = fetch_instagram_code(cfg, started_at=started_at)
-        if not code:
-            logger.warning("IMAP fetch returned no code; falling back to block detection")
-            return False
-
-        # Preenche o input
-        input_el = None
-        for sel in self.selectors.get_all("EMAIL_CHALLENGE_INPUT"):
-            try:
-                input_el = driver.find_element(By.CSS_SELECTOR, sel)
-                break
-            except NoSuchElementException:
-                continue
-        if input_el is None:
-            logger.warning("Email challenge input not found after detection")
-            return False
-
-        try:
-            input_el.clear()
-        except Exception:
-            pass
-
-        # Preenche via send_keys + dispara eventos React (input + change + blur)
-        # para garantir que o framework perceba o valor e habilite o Continue.
-        input_el.send_keys(code)
-        try:
-            driver.execute_script(
-                "const el = arguments[0]; const setter = "
-                "Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; "
-                "setter.call(el, arguments[1]); "
-                "el.dispatchEvent(new Event('input', {bubbles: true})); "
-                "el.dispatchEvent(new Event('change', {bubbles: true})); "
-                "el.blur();",
-                input_el, code,
-            )
-        except Exception as e:
-            logger.debug(f"React event dispatch failed (non-fatal): {e}")
-        # Pequena pausa para UI re-renderizar e habilitar o botão
-        human_delay(0.8, variance=0.2)
-
-        # Clica Continue — 3 estratégias: native click, JS click, send Enter
-        clicked = False
-        btn = None
-        for sel in self.selectors.get_all("EMAIL_CHALLENGE_CONTINUE"):
-            try:
-                btn = driver.find_element(By.XPATH, sel)
-                break
-            except NoSuchElementException:
-                continue
-        if btn is not None:
-            # Bloks/Meta monta o handler de clique no ancestor com
-            # cursor:pointer e pointer-events:auto, não no role=button em si.
-            # Tentamos 4 estratégias em cascata.
-            for strategy in ('ancestor_js', 'native', 'js', 'enter'):
-                try:
-                    if strategy == 'ancestor_js':
-                        driver.execute_script(
-                            "let el = arguments[0]; "
-                            "while (el) { "
-                            "  const st = window.getComputedStyle(el); "
-                            "  if (st.cursor === 'pointer' && st.pointerEvents !== 'none') { "
-                            "    el.click(); return; "
-                            "  } "
-                            "  el = el.parentElement; "
-                            "} "
-                            "arguments[0].click();",
-                            btn,
-                        )
-                    elif strategy == 'native':
-                        btn.click()
-                    elif strategy == 'js':
-                        driver.execute_script("arguments[0].click();", btn)
-                    else:
-                        input_el.send_keys(Keys.RETURN)
-                    clicked = True
-                    logger.debug(f"Continue clicked via {strategy}")
-                    # Pequeno delay e verifica se challenge sumiu — se não,
-                    # próxima estratégia já.
-                    human_delay(1.5, variance=0.3)
-                    try:
-                        driver.find_element(By.CSS_SELECTOR, headings[0])
-                        # heading ainda presente → estratégia não funcionou
-                        clicked = False
-                        continue
-                    except NoSuchElementException:
-                        break
-                except Exception as e:
-                    logger.debug(f"Continue click via {strategy} failed: {e}")
-        if not clicked:
-            logger.warning("Could not click Continue on email challenge")
-            return False
-
-        # Aguarda navegação sair do challenge
-        def _challenge_gone(d):
-            for s in headings:
-                try:
-                    d.find_element(By.CSS_SELECTOR, s)
-                    return False
-                except NoSuchElementException:
-                    continue
-            return True
-        try:
-            WebDriverWait(driver, self.timeout).until(_challenge_gone)
-            return True
-        except TimeoutException:
-            logger.warning("Email challenge page still present after Continue")
-            return False
+        return self._challenge_chain.try_resolve(driver)
 
     def login(self):
         driver = self.driver
