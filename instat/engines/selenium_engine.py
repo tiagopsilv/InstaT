@@ -17,22 +17,22 @@ try:
     from instat.backoff import SmartBackoff
     from instat.checkpoint import ExtractionCheckpoint
     from instat.config.selector_loader import SelectorLoader
-    from instat.constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE, human_delay
+    from instat.constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE
     from instat.engines.base import BaseEngine
-    from instat.exceptions import BlockedError
     from instat.login import InstaLogin
     from instat.modal_interaction import ModalInteraction
+    from instat.scroll_loop import ScrollLoop
     from instat.session_cache import SessionCache
     from instat.utils import Utils
 except ImportError:
     from backoff import SmartBackoff
     from checkpoint import ExtractionCheckpoint
     from config.selector_loader import SelectorLoader
-    from constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE, human_delay
+    from constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE
     from engines.base import BaseEngine
-    from exceptions import BlockedError
     from login import InstaLogin
     from modal_interaction import ModalInteraction  # type: ignore
+    from scroll_loop import ScrollLoop  # type: ignore
     from session_cache import SessionCache
     from utils import Utils
 
@@ -284,176 +284,35 @@ class SeleniumEngine(BaseEngine):
                       profile_id: Optional[str] = None,
                       list_type: Optional[str] = None,
                       should_stop: Optional[Callable[[], bool]] = None) -> List[str]:
-        """Extrai perfis via JS scroll direto no container do modal.
-
-        Estratégia PERF-03:
-        - Re-localiza container via JS a cada scroll (evita stale refs).
-        - Scroll em 1 IPC JS + batch_read_text em 1 IPC.
-        - Rate limit do IG: após ~150 perfis em burst, servidor para de entregar.
-          Recovery: fecha e reabre o modal (reset do cursor de paginação).
-        - Para de vez quando mesmo após reopen não trouxe novos.
-        """
-        start_time = time.perf_counter()
-        unique_profiles = set(initial_profiles) if initial_profiles else set()
-        if unique_profiles:
-            logger.info(f"Starting with {len(unique_profiles)} profiles from checkpoint.")
-        _last_checkpoint_count = len(unique_profiles)
-
-        profile_selector = self._selectors.get("PROFILE_USERNAME_SPAN")
-        stale_rounds = 0
-        reopen_attempts = 0
-        # Targets populares (milhões de followers) costumam demorar a
-        # começar a render itens — se esgotar MAX_STALE_ROUNDS durante
-        # o warmup, perdemos a extração antes de sequer começar.
-        # Durante os primeiros `warmup_threshold` perfis, usamos um
-        # limite maior (warmup_stale_rounds) antes de declarar rate-limit.
-        MAX_STALE_ROUNDS = 4
-        MAX_REOPEN_ATTEMPTS = 3
-
-        while True:
-            if self._is_max_duration_exceeded(start_time, max_duration):
-                logger.info("Max duration reached, stopping extraction.")
-                break
-
-            if should_stop and should_stop():
-                logger.info("should_stop signal received, stopping extraction.")
-                break
-
-            count_before = len(unique_profiles)
-
-            # Scroll via JS (re-localiza o container cada vez; sem stale ref)
-            self._scroll_modal_js()
-
-            # Small delay for lazy-load to render
-            human_delay(self.pause_time, variance=0.2)
-
-            # Batch-read usernames via JS
-            snapshot = Utils.batch_read_text(self._driver, profile_selector)
-            unique_profiles |= snapshot
-
-            new_added = len(unique_profiles) - count_before
-
-            # Checkpoint incremental
-            if checkpoint and (len(unique_profiles) - _last_checkpoint_count) >= self.checkpoint_interval:
-                checkpoint.save(unique_profiles)
-                _last_checkpoint_count = len(unique_profiles)
-                logger.info(f"Checkpoint saved: {len(unique_profiles)} profiles")
-
-            # Notify orchestrator of incremental batch (for EngineManager checkpoint sync)
-            if on_batch and new_added > 0:
-                try:
-                    on_batch(unique_profiles)
-                except Exception as e:
-                    logger.debug(f"on_batch failed silently: {e}")
-
-            if len(unique_profiles) >= expected_count:
-                logger.info(f"Expected profile count reached ({len(unique_profiles)}/{expected_count}).")
-                break
-
-            if new_added == 0:
-                stale_rounds += 1
-                # Warmup: tolera mais rounds vazios enquanto a coleta ainda
-                # é rasa. Lista nova de seguidores/seguindo em target
-                # popular pode levar vários scrolls antes de devolver itens.
-                in_warmup = len(unique_profiles) < self.warmup_threshold
-                effective_limit = (
-                    self.warmup_stale_rounds if in_warmup else MAX_STALE_ROUNDS
-                )
-                logger.debug(
-                    f"No new profiles in this round. Stale rounds: "
-                    f"{stale_rounds}/{effective_limit}"
-                    f"{' (warmup)' if in_warmup else ''}"
-                )
-                # Telemetry for BlockPredictor (opt-in via setattr on engine).
-                predictor = getattr(self, '_block_predictor', None)
-                if predictor is not None:
-                    try:
-                        predictor.record_stale(
-                            stale_count=stale_rounds,
-                            max_stale=effective_limit,
-                            reopen_failed=False,
-                            engine=self.name,
-                        )
-                    except Exception as e:
-                        logger.debug(f"block_predictor record_stale failed: {e}")
-                if stale_rounds >= effective_limit:
-                    # PERF-03 Solução G: rate limit detectado — tenta reopen modal
-                    # para reset do cursor de paginação do Instagram.
-                    if (profile_id and list_type
-                            and reopen_attempts < MAX_REOPEN_ATTEMPTS):
-                        reopen_attempts += 1
-                        logger.info(
-                            f"Rate limit suspected after {len(unique_profiles)} profiles. "
-                            f"Reopening modal (attempt {reopen_attempts}/{MAX_REOPEN_ATTEMPTS})..."
-                        )
-                        reopen_ok = self._reopen_modal(profile_id, list_type)
-                        if predictor is not None and not reopen_ok:
-                            try:
-                                predictor.record_stale(
-                                    stale_count=stale_rounds,
-                                    max_stale=effective_limit,
-                                    reopen_failed=True,
-                                    engine=self.name,
-                                )
-                            except Exception as e:
-                                logger.debug(
-                                    f"block_predictor record_stale failed: {e}"
-                                )
-                        if reopen_ok:
-                            stale_rounds = 0
-                            # Cooldown anti-detecção antes de retomar
-                            human_delay(3.0, variance=1.0)
-                            continue
-                        else:
-                            logger.warning("Reopen failed — stopping extraction.")
-                            break
-                    logger.info(
-                        f"No new profiles after {MAX_STALE_ROUNDS} rounds "
-                        f"+ {reopen_attempts} reopen attempts — end of list."
-                    )
-                    break
-                # Backoff pequeno entre tentativas "vazias" dá tempo ao lazy-load
-                human_delay(self.wait_interval, variance=0.2)
-            else:
-                stale_rounds = 0
-                logger.info(f"Collected {len(unique_profiles)} out of {expected_count} expected profiles (+{new_added}).")
-
-        elapsed = time.perf_counter() - start_time
-        logger.info(
-            f"Profile extraction completed in {elapsed:.2f}s. "
-            f"Total unique profiles: {len(unique_profiles)}/{expected_count}."
+        """Thin delegate — scroll-loop logic lives in ScrollLoop."""
+        return self._build_scroll_loop().run(
+            expected_count,
+            max_duration,
+            initial_profiles=initial_profiles,
+            checkpoint=checkpoint,
+            on_batch=on_batch,
+            profile_id=profile_id,
+            list_type=list_type,
+            should_stop=should_stop,
         )
 
-        # PERF-02 Solução E: se cobertura abaixo do threshold E coletou algo,
-        # salva checkpoint e levanta BlockedError para permitir fallback engine
-        # continuar de onde parou. Se coletou 0, deixa o return [] normal.
-        coverage = (
-            len(unique_profiles) / expected_count if expected_count > 0 else 1.0
+    def _build_scroll_loop(self) -> ScrollLoop:
+        """Factory — reads current engine config + optional
+        block_predictor (opt-in via setattr) at call time. Binds
+        `self._reopen_modal` so test patches on the wrapper propagate."""
+        return ScrollLoop(
+            driver=self._driver,
+            selectors=self._selectors,
+            reopen_modal=self._reopen_modal,
+            pause_time=self.pause_time,
+            wait_interval=self.wait_interval,
+            warmup_threshold=self.warmup_threshold,
+            warmup_stale_rounds=self.warmup_stale_rounds,
+            checkpoint_interval=self.checkpoint_interval,
+            completion_threshold=self.completion_threshold,
+            engine_name=self.name,
+            block_predictor=getattr(self, "_block_predictor", None),
         )
-        if (0 < len(unique_profiles) and expected_count > 0
-                and coverage < self.completion_threshold):
-            if checkpoint:
-                checkpoint.save(unique_profiles)
-            # Notifica orquestrador dos perfis finais ANTES de levantar
-            # (assim EngineManager tem `profiles` populado e retorna parcial
-            # em vez de AllEnginesBlockedError)
-            if on_batch:
-                try:
-                    on_batch(unique_profiles)
-                except Exception as e:
-                    logger.debug(f"on_batch final failed silently: {e}")
-            logger.warning(
-                f"Coverage {100*coverage:.0f}% below threshold "
-                f"{100*self.completion_threshold:.0f}% "
-                f"({len(unique_profiles)}/{expected_count}). "
-                f"Raising BlockedError to trigger engine fallback."
-            )
-            raise BlockedError(
-                f"selenium partial coverage: "
-                f"{len(unique_profiles)}/{expected_count} ({100*coverage:.0f}%)"
-            )
-
-        return list(unique_profiles)
 
     def _reset_page_state(self) -> None:
         """Back-compat wrapper — delegates to ModalInteraction.reset_page."""
@@ -464,36 +323,8 @@ class SeleniumEngine(BaseEngine):
         return self._get_modal().reopen(profile_id, list_type)
 
     def _scroll_modal_js(self) -> None:
-        """Scrolla o container do modal em UMA IPC usando JS puro.
-        Re-localiza o container a cada chamada (evita stale refs).
-        Fallback: window scroll se nenhum container encontrado."""
-        try:
-            self._driver.execute_script(
-                """
-                const selectors = [
-                    'div[role="dialog"] div[style*="overflow"]',
-                    'div[role="dialog"] ul',
-                    'div[role="dialog"] div[style*="height"]'
-                ];
-                for (const s of selectors) {
-                    const el = document.querySelector(s);
-                    if (el && el.scrollHeight > el.clientHeight) {
-                        el.scrollTop = el.scrollHeight;
-                        return true;
-                    }
-                }
-                // Fallback: scroll inside dialog using the dialog itself
-                const dlg = document.querySelector('div[role="dialog"]');
-                if (dlg) {
-                    dlg.scrollTop = dlg.scrollHeight;
-                    return true;
-                }
-                window.scrollTo(0, document.body.scrollHeight);
-                return false;
-                """
-            )
-        except Exception as e:
-            logger.debug(f"scroll_modal_js error (ignored): {e}")
+        """Back-compat wrapper — delegates to ScrollLoop."""
+        self._build_scroll_loop()._scroll_modal_js()
 
     def _get_scrollable_container(self):
         try:
