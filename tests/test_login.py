@@ -59,7 +59,7 @@ class TestInstaLogin(unittest.TestCase):
         except Exception:
             pass
 
-    @patch("instat.login.WebDriverWait")
+    @patch("instat.login_flow.WebDriverWait")
     def test_timeout_wait_for_form_fields(self, mock_wait):
         """
         Should raise an exception when login form fields do not appear.
@@ -71,7 +71,7 @@ class TestInstaLogin(unittest.TestCase):
 
         self.assertIn("Timeout waiting for login form elements", str(context.exception))
 
-    @patch("instat.login.WebDriverWait")
+    @patch("instat.login_flow.WebDriverWait")
     def test_successful_login(self, mock_wait):
         """
         Should return True when login completes successfully.
@@ -90,7 +90,7 @@ class TestInstaLogin(unittest.TestCase):
         username_mock.send_keys.assert_any_call(self.username)
         password_mock.send_keys.assert_any_call(self.correct_password)
 
-    @patch("instat.login.WebDriverWait")
+    @patch("instat.login_flow.WebDriverWait")
     def test_invalid_credentials(self, mock_wait):
         """
         Should raise an exception for incorrect credentials.
@@ -106,7 +106,7 @@ class TestInstaLogin(unittest.TestCase):
 
         self.assertIn("login", str(context.exception).lower())
 
-    @patch("instat.login.WebDriverWait")
+    @patch("instat.login_flow.WebDriverWait")
     def test_fallback_button_click(self, mock_wait):
         # Simulate fallback login button click when RETURN key doesn't work
         mock_driver = MagicMock()

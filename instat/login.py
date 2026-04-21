@@ -7,20 +7,12 @@ from urllib.parse import urlsplit, urlunsplit
 from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import (
-    TimeoutException,
     WebDriverException,
 )
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.firefox import GeckoDriverManager
 
-try:
-    from instat.constants import LOGIN_POST_CLICK_DELAY, human_delay
-except ImportError:
-    from constants import LOGIN_POST_CLICK_DELAY, human_delay
+# (constants no longer needed here — moved to login_flow.py)
 try:
     from instat.exceptions import AccountBlockedError
 except ImportError:
@@ -39,6 +31,10 @@ except ImportError:
         ChallengeResolverChain,
         EmailChallengeResolver,
     )
+try:
+    from instat.login_flow import FormLogin, SessionRestorer
+except ImportError:
+    from login_flow import FormLogin, SessionRestorer  # type: ignore
 
 # Setup Loguru logger for advanced logging
 logger.remove()
@@ -101,6 +97,14 @@ class InstaLogin:
         if challenge_chain is None:
             challenge_chain = self._default_challenge_chain()
         self._challenge_chain = challenge_chain
+        # Login-flow collaborators. Both are stateless; sharing across
+        # login() calls is fine.
+        self._session_restorer = SessionRestorer(base_url=self._base_url)
+        self._form_login = FormLogin(
+            selector_loader=self.selectors,
+            base_url=self._base_url,
+            timeout=self.timeout,
+        )
 
     def _default_challenge_chain(self) -> ChallengeResolverChain:
         """Factory for the builtin chain. Override in subclass or pass
@@ -279,55 +283,25 @@ class InstaLogin:
 
         return str(screenshot_path)
 
+    def _get_session_restorer(self) -> SessionRestorer:
+        """Lazy accessor — tolerates tests that bypass __init__."""
+        if getattr(self, '_session_restorer', None) is None:
+            self._session_restorer = SessionRestorer(base_url=self._base_url)
+        return self._session_restorer
+
+    def _get_form_login(self) -> FormLogin:
+        """Lazy accessor — tolerates tests that bypass __init__."""
+        if getattr(self, '_form_login', None) is None:
+            self._form_login = FormLogin(
+                selector_loader=self.selectors,
+                base_url=self._base_url,
+                timeout=self.timeout,
+            )
+        return self._form_login
+
     def _try_restore_session(self, driver, cookies: list) -> bool:
-        """Tenta restaurar sessão via cookies. True em sucesso.
-        Limpa cookies do driver e retorna False em falha para fallback ao form login."""
-        try:
-            driver.get(f'{self._base_url}/')
-            added = 0
-            failed = 0
-            for c in cookies:
-                try:
-                    driver.add_cookie(c)
-                    added += 1
-                except Exception as e:
-                    failed += 1
-                    logger.debug(f"cookie add failed: {c.get('name','?')} ({e})")
-            logger.debug(f"Cookie cache: {added} added, {failed} failed")
-
-            if added == 0:
-                return False
-
-            driver.refresh()
-
-            # Check 1: URL doesn't redirect back to login
-            if '/accounts/login' in driver.current_url.lower():
-                logger.debug("After refresh still on login page — cookies invalid")
-                try:
-                    driver.delete_all_cookies()
-                except Exception:
-                    pass
-                return False
-
-            # Check 2: sessionid cookie present (stronger signal than URL)
-            session_cookie = driver.get_cookie('sessionid')
-            if not session_cookie:
-                logger.debug("No sessionid cookie after refresh — not logged in")
-                try:
-                    driver.delete_all_cookies()
-                except Exception:
-                    pass
-                return False
-
-            logger.info('Session restored from cookie cache.')
-            return True
-        except Exception as e:
-            logger.debug(f'Failed to restore session from cache: {e}')
-            try:
-                driver.delete_all_cookies()
-            except Exception:
-                pass
-            return False
+        """Back-compat wrapper — delegates to SessionRestorer."""
+        return self._get_session_restorer().attempt(driver, cookies)
 
     def _try_handle_email_challenge(self, driver) -> bool:
         """Delegates to the challenge resolver chain.
@@ -338,103 +312,49 @@ class InstaLogin:
         return self._challenge_chain.try_resolve(driver)
 
     def login(self):
+        """Orquestrador do fluxo de login em 6 fases.
+
+        Cada fase vive em um módulo dedicado — mudanças pontuais do IG
+        (layout, selectors, padrões de challenge, etc.) se concentram
+        em um único arquivo, sem rebuscar esta função.
+        """
         driver = self.driver
 
-        # Attempt session restore from cookie cache — much faster than form login
-        if self._session_cache:
-            cookies = self._session_cache.load(self.username)
-            if cookies:
-                if self._try_restore_session(driver, cookies):
-                    return True
+        # Phase 1: restore from cookie cache (fast path, preferred).
+        if self._try_cookie_restore(driver):
+            return True
 
-        try:
-            logger.info("Navigating to Instagram login page")
-            driver.get(f"{self._base_url}/accounts/login/")
-        except WebDriverException as e:
-            logger.exception("Error loading Instagram login page")
-            raise Exception("Failed to load Instagram login page.") from e
+        # Phase 2: classic form login.
+        self._get_form_login().execute(driver, self.username, self.password)
 
-        wait = WebDriverWait(driver, self.timeout)
-        try:
-            logger.debug("Waiting for username and password fields to be visible")
-            username_input = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, self.selectors.get("LOGIN_USERNAME_INPUT"))))
-            password_input = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, self.selectors.get("LOGIN_PASSWORD_INPUT"))))
-        except TimeoutException as e:
-            logger.exception("Timeout waiting for login form elements")
-            raise Exception("Login failed: Timeout waiting for login form elements.") from e
-        except WebDriverException as e:
-            logger.exception("Error locating login form elements")
-            raise Exception("Login failed: WebDriver error during element location.") from e
-
-        try:
-            logger.info("Entering login credentials")
-            username_input.clear()
-            username_input.send_keys(self.username)
-            password_input.clear()
-            password_input.send_keys(self.password)
-            password_input.send_keys(Keys.RETURN)
-        except WebDriverException as e:
-            logger.exception("Error entering credentials")
-            raise Exception("Login failed: Unable to enter credentials.") from e
-
-        # Check for the "Ignorar" button after login
-        Utils.click_ignore_button_if_present(driver, timeout=5, wait_before_click=1)
-
-        try:
-            logger.debug("Waiting for login result via redirect")
-            login_url = f"{self._base_url}/accounts/login/"
-            WebDriverWait(driver, self.timeout).until(lambda d: d.current_url != login_url)
-        except TimeoutException:
-            logger.debug("Login via RETURN key failed, trying fallback button click...")
-
-            try:
-                login_buttons = driver.find_elements(By.XPATH, self.selectors.get("LOGIN_BUTTON_CANDIDATE"))
-                logger.debug(f"Found {len(login_buttons)} login button candidates")
-
-                for btn in login_buttons:
-                    try:
-                        inner_text = btn.get_attribute("textContent").strip().casefold()
-                        if any(keyword in inner_text for keyword in self.keywords):
-                            logger.debug(f"Found login button with matching text: '{inner_text}', clicking it.")
-                            btn.click()
-                            # Wait until the URL changes
-                            _login_url = f"{self._base_url}/accounts/login/"
-                            WebDriverWait(driver, self.timeout).until(
-                                lambda d, u=_login_url: d.current_url != u
-                            )
-                            # Wait until page is fully loaded
-                            WebDriverWait(driver, self.timeout).until(
-                                lambda d: d.execute_script("return document.readyState") == "complete"
-                            )
-                            human_delay(LOGIN_POST_CLICK_DELAY)
-                            break
-                    except Exception as e:
-                        logger.debug(f"Skipping one candidate button due to error: {e}")
-                else:
-                    logger.error("No login button matched expected keywords.")
-                    raise Exception("Login failed: No suitable login button found.")
-
-            except Exception as e:
-                logger.exception("Fallback login button click failed")
-                raise Exception("Login failed: Unable to login using fallback method.") from e
-
-        # Se bateu em challenge "Check your email" e temos IMAP configurado, resolve automaticamente.
+        # Phase 3: resolve any email/Bloks challenge.
         if self._try_handle_email_challenge(driver):
             logger.info("Email challenge resolved via IMAP auto-fetch")
 
-        # Validação unificada de bloqueio de conta
+        # Phase 4: raise if account is in a blocked state.
         self._check_account_blocked(driver)
 
-        # Handle "Save your login info?" modal using utility method
-        Utils.dismiss_save_login_modal(driver, self.close_keywords, self.timeout)
+        # Phase 5: dismiss "Save your login info?" modal if present.
+        Utils.dismiss_save_login_modal(
+            driver, self.close_keywords, self.timeout,
+        )
 
         logger.info("Login successful!")
 
+        # Phase 6: persist cookies for next run's cookie-cache path.
         if self._session_cache:
             self._session_cache.save(self.username, driver.get_cookies())
             logger.debug('Session cookies saved to cache.')
 
         return True
+
+    def _try_cookie_restore(self, driver) -> bool:
+        if not self._session_cache:
+            return False
+        cookies = self._session_cache.load(self.username)
+        if not cookies:
+            return False
+        return self._session_restorer.attempt(driver, cookies)
 
 if __name__ == '__main__':
     # Replace 'your_username' and 'your_password' with your actual credentials

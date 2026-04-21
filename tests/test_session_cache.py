@@ -106,7 +106,7 @@ class TestLoginUsesCache(unittest.TestCase):
 
         client = InstaLogin('testuser', 'testpass', headless=True, session_cache=mock_cache)
 
-        with patch("instat.login.WebDriverWait") as mock_wait:
+        with patch("instat.login_flow.WebDriverWait") as mock_wait:
             username_mock = MagicMock()
             password_mock = MagicMock()
             mock_wait.return_value.until.side_effect = [username_mock, password_mock, True]
