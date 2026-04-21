@@ -77,7 +77,9 @@ class TestUrlRedactionInLogs(unittest.TestCase):
 
     def test_check_account_blocked_logs_redacted(self):
         """_check_account_blocked emits URL without ?apc= in the log record."""
+        from instat.block_detector import BlockDetector
         login = InstaLogin.__new__(InstaLogin)
+        login._block_detector = BlockDetector()
         driver = MagicMock()
         driver.current_url = (
             "https://www.instagram.com/auth_platform/codeentry/"

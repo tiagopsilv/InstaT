@@ -26,6 +26,10 @@ try:
     from instat.exceptions import AccountBlockedError
 except ImportError:
     from exceptions import AccountBlockedError
+try:
+    from instat.block_detector import BlockDetector, BlockInfo
+except ImportError:
+    from block_detector import BlockDetector, BlockInfo  # type: ignore
 
 # Setup Loguru logger for advanced logging
 logger.remove()
@@ -63,20 +67,20 @@ class InstaLogin:
     # Public list of keywords used to identify the login button in any language
     keywords = ["entrar", "log in", "login", "iniciar sesión", "connexion", "anmelden"]
 
-    # Signatures used to detect Meta interstitials
-    META_VERIFIED_SIGNATURES = [
-        "o meta verified está disponível para o facebook e o instagram",  # Portuguese string from provided HTML
-        "meta verified",
-    ]
-
     def __init__(self, username, password, headless=True, timeout=10,
-                 session_cache=None, base_url=None, imap_config=None):
+                 session_cache=None, base_url=None, imap_config=None,
+                 block_detector=None):
         self.username = username
         self.password = password
         self.timeout = timeout
         self._session_cache = session_cache
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
         self._imap_config = imap_config
+        # block_detector is swappable: default instance uses the
+        # builtin URL/HTML rules; callers can inject a subclass with
+        # extra_checks() to add new detection paths without touching
+        # the login flow.
+        self._block_detector = block_detector or BlockDetector()
         logger.info("Initializing InstaLogin instance")
         self.driver = self.init_driver(headless)
         self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
@@ -152,17 +156,6 @@ class InstaLogin:
             logger.exception("Error executing script to remove webdriver flag")
         return driver
 
-    # Mapa de indicadores de bloqueio: padrão na URL -> (reason legível, ação sugerida)
-    BLOCK_INDICATORS = {
-        'challenge':      ("Desafio de segurança (challenge)", "Abra o Instagram no navegador e resolva o desafio manualmente."),
-        'checkpoint':     ("Checkpoint de verificação", "Verifique o e-mail ou SMS associado à conta e confirme a identidade."),
-        'auth_platform':  ("Verificação de plataforma Meta", "Acesse o e-mail da conta e siga as instruções de verificação."),
-        'codeentry':      ("Código de verificação exigido (2FA/e-mail)", "Insira o código enviado por e-mail/SMS no Instagram."),
-        'two_factor':     ("Autenticação de dois fatores (2FA)", "Use o app autenticador ou código SMS para completar o login."),
-        'suspicious':     ("Atividade suspeita detectada", "Faça login manual no navegador para desbloquear a conta."),
-        'consent':        ("Consentimento obrigatório (GDPR/termos)", "Aceite os termos de uso no navegador manualmente."),
-    }
-
     @staticmethod
     def _redact_url(url: str) -> str:
         """Remove query + fragment de URL antes de logar.
@@ -177,74 +170,56 @@ class InstaLogin:
         except Exception:
             return url
 
+    # Back-compat re-exports (kept for external callers that reached in).
+    # The canonical source of truth moved to BlockDetector.
+    BLOCK_INDICATORS = BlockDetector.URL_INDICATORS
+
     def _check_account_blocked(self, driver):
         """
-        Verificação unificada de bloqueio pós-login.
-        Detecta: checkpoint, 2FA, Meta interstitial, credenciais inválidas, consent.
-        Salva screenshot como evidência e levanta AccountBlockedError com motivo detalhado.
+        Verificação unificada de bloqueio pós-login. Delega a detecção
+        ao `BlockDetector` e trata o resultado (screenshot + log + raise).
+        Detecção e reação separadas — mudanças nos padrões do IG tocam
+        apenas block_detector.py.
         """
-        current_url = driver.current_url
-        url_lower = current_url.lower()
+        info = self._block_detector.check(driver)
+        if info is None:
+            return
+        self._handle_block(driver, info)
 
-        # 1. Detecção por URL (checkpoint, 2FA, challenge, etc.)
-        for indicator, (reason, action) in self.BLOCK_INDICATORS.items():
-            if indicator in url_lower:
-                screenshot_path = self._save_block_evidence(driver, indicator)
-                logger.error(
-                    f"CONTA BLOQUEADA: {reason}\n"
-                    f"  URL: {self._redact_url(current_url)}\n"
-                    f"  Titulo: {driver.title}\n"
-                    f"  Acao: {action}\n"
-                    f"  Evidencia: {screenshot_path}"
-                )
-                raise AccountBlockedError(
-                    f"Conta bloqueada: {reason}. {action}",
-                    reason=reason,
-                    url=current_url,
-                    screenshot_path=screenshot_path,
-                )
+    def _handle_block(self, driver, info: BlockInfo) -> None:
+        """Screenshot + log + raise. Shared reaction path for every
+        detection kind so the log shape stays consistent."""
+        tag = self._tag_for_kind(info.kind, info.indicator)
+        screenshot_path = self._save_block_evidence(driver, tag)
+        self._log_block(info, screenshot_path)
+        raise AccountBlockedError(
+            f"Conta bloqueada: {info.reason}. {info.action}",
+            reason=info.reason,
+            url=info.url,
+            screenshot_path=screenshot_path,
+        )
 
-        # 2. Detecção por conteúdo HTML (Meta Verified, etc.)
-        html_lc = (driver.page_source or "").casefold()
-        page_title = (driver.title or "").strip()
+    @staticmethod
+    def _tag_for_kind(kind: str, indicator: str) -> str:
+        if kind == 'html':
+            return "meta_interstitial"
+        if kind == 'login_loop':
+            return "login_failed"
+        # kind == 'url' — use the URL fragment itself (challenge, checkpoint…)
+        return indicator or "blocked"
 
-        for sig in self.META_VERIFIED_SIGNATURES:
-            if sig in html_lc:
-                reason = "Intersticial Meta Verified"
-                action = "Verifique o e-mail da conta para instruções de verificação Meta."
-                screenshot_path = self._save_block_evidence(driver, "meta_interstitial")
-                logger.error(
-                    f"CONTA BLOQUEADA: {reason}\n"
-                    f"  URL: {self._redact_url(current_url)}\n"
-                    f"  Titulo: {page_title}\n"
-                    f"  Assinatura detectada: '{sig}'\n"
-                    f"  Acao: {action}\n"
-                    f"  Evidencia: {screenshot_path}"
-                )
-                raise AccountBlockedError(
-                    f"Conta bloqueada: {reason}. {action}",
-                    reason=reason,
-                    url=current_url,
-                    screenshot_path=screenshot_path,
-                )
-
-        # 3. Detecção de página de login ainda ativa (credenciais inválidas ou loop)
-        if '/accounts/login' in url_lower:
-            reason = "Credenciais inválidas ou login em loop"
-            action = "Verifique username/password. A conta pode estar desativada."
-            screenshot_path = self._save_block_evidence(driver, "login_failed")
-            logger.error(
-                f"CONTA BLOQUEADA: {reason}\n"
-                f"  URL: {self._redact_url(current_url)}\n"
-                f"  Acao: {action}\n"
-                f"  Evidencia: {screenshot_path}"
-            )
-            raise AccountBlockedError(
-                f"Conta bloqueada: {reason}. {action}",
-                reason=reason,
-                url=current_url,
-                screenshot_path=screenshot_path,
-            )
+    def _log_block(self, info: BlockInfo, screenshot_path: str) -> None:
+        parts = [
+            f"CONTA BLOQUEADA: {info.reason}",
+            f"  URL: {self._redact_url(info.url)}",
+        ]
+        if info.title:
+            parts.append(f"  Titulo: {info.title}")
+        if info.kind == 'html':
+            parts.append(f"  Assinatura detectada: '{info.indicator}'")
+        parts.append(f"  Acao: {info.action}")
+        parts.append(f"  Evidencia: {screenshot_path}")
+        logger.error("\n".join(parts))
 
     def _save_block_evidence(self, driver, tag: str) -> str:
         """Salva screenshot e HTML como evidência de bloqueio."""
