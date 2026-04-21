@@ -377,6 +377,18 @@ class SeleniumEngine(BaseEngine):
                     f"{stale_rounds}/{effective_limit}"
                     f"{' (warmup)' if in_warmup else ''}"
                 )
+                # Telemetry for BlockPredictor (opt-in via setattr on engine).
+                predictor = getattr(self, '_block_predictor', None)
+                if predictor is not None:
+                    try:
+                        predictor.record_stale(
+                            stale_count=stale_rounds,
+                            max_stale=effective_limit,
+                            reopen_failed=False,
+                            engine=self.name,
+                        )
+                    except Exception as e:
+                        logger.debug(f"block_predictor record_stale failed: {e}")
                 if stale_rounds >= effective_limit:
                     # PERF-03 Solução G: rate limit detectado — tenta reopen modal
                     # para reset do cursor de paginação do Instagram.
@@ -387,7 +399,20 @@ class SeleniumEngine(BaseEngine):
                             f"Rate limit suspected after {len(unique_profiles)} profiles. "
                             f"Reopening modal (attempt {reopen_attempts}/{MAX_REOPEN_ATTEMPTS})..."
                         )
-                        if self._reopen_modal(profile_id, list_type):
+                        reopen_ok = self._reopen_modal(profile_id, list_type)
+                        if predictor is not None and not reopen_ok:
+                            try:
+                                predictor.record_stale(
+                                    stale_count=stale_rounds,
+                                    max_stale=effective_limit,
+                                    reopen_failed=True,
+                                    engine=self.name,
+                                )
+                            except Exception as e:
+                                logger.debug(
+                                    f"block_predictor record_stale failed: {e}"
+                                )
+                        if reopen_ok:
                             stale_rounds = 0
                             # Cooldown anti-detecção antes de retomar
                             human_delay(3.0, variance=1.0)

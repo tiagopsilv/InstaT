@@ -15,6 +15,7 @@ def _make_extractor_skeleton(**kwargs):
     ext._engine_names = ['selenium']
     ext.timeout = 10
     ext._completion_threshold_override = None
+    ext._block_predictor = None
     ext.username = 'primary'
     ext.password = 'pw'
     ext._engine_manager.engines = [

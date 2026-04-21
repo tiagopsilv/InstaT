@@ -96,7 +96,8 @@ class InstaExtractor:
                  engines: Optional[List[str]] = None,
                  exporter: Optional[BaseExporter] = None,
                  imap_config=None,
-                 completion_threshold: Optional[float] = None) -> None:
+                 completion_threshold: Optional[float] = None,
+                 block_predictor=None) -> None:
         """
         engines: lista de nomes ['selenium', 'playwright', 'httpx']. Default: ['selenium'].
         exporter: exporter opcional chamado após cada extração bem-sucedida.
@@ -158,16 +159,27 @@ class InstaExtractor:
             for eng in engine_instances:
                 if hasattr(eng, 'completion_threshold'):
                     eng.completion_threshold = self._completion_threshold_override
-            if (len(engine_instances) > 1
-                    and self._completion_threshold_override < 0.5):
-                logger.warning(
-                    f"completion_threshold={self._completion_threshold_override} "
-                    "< 0.5 combined with multi-engine cascade "
-                    f"{[e.name for e in engine_instances]}: the first engine "
-                    "will accept low coverage as success and the cascade "
-                    "will not trigger. Use get_*_until_complete for "
-                    "best-effort partial collection."
-                )
+
+        # Attach BlockPredictor (Phase 1 — passive telemetry, opt-in).
+        # Engines check for `self._block_predictor` and skip silently if
+        # attribute is absent or None. Must be set BEFORE primary login
+        # so the HttpxEngine response hook picks it up on _build_client.
+        self._block_predictor = block_predictor
+        if block_predictor is not None:
+            for eng in engine_instances:
+                eng._block_predictor = block_predictor
+        ct = self._completion_threshold_override
+        if (ct is not None
+                and len(engine_instances) > 1
+                and ct < 0.5):
+            logger.warning(
+                f"completion_threshold={ct} "
+                "< 0.5 combined with multi-engine cascade "
+                f"{[e.name for e in engine_instances]}: the first engine "
+                "will accept low coverage as success and the cascade "
+                "will not trigger. Use get_*_until_complete for "
+                "best-effort partial collection."
+            )
 
         logger.info("Initializing InstaExtractor with username: {}", username)
 
@@ -691,6 +703,7 @@ class InstaExtractor:
             engines=list(self._engine_names),
             imap_config=self._imap_config,
             completion_threshold=self._completion_threshold_override,
+            block_predictor=self._block_predictor,
         )
 
     def get_followers_with_rotation(

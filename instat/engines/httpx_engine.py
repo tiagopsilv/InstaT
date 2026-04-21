@@ -63,7 +63,12 @@ class HttpxEngine(BaseEngine):
         self._session_cache = SessionCache()
 
     def _build_client(self):
-        """Constrói httpx.Client com UA e proxy opcional."""
+        """Constrói httpx.Client com UA e proxy opcional.
+
+        Se `self._block_predictor` estiver atribuído (opt-in via
+        InstaExtractor), registra um response hook que grava cada
+        resposta no predictor. Zero impacto quando predictor é None.
+        """
         import httpx
         headers = {
             'User-Agent': MOBILE_UA,
@@ -78,7 +83,39 @@ class HttpxEngine(BaseEngine):
         }
         if self._proxy:
             kwargs['proxies'] = self._proxy
+        predictor = getattr(self, '_block_predictor', None)
+        if predictor is not None:
+            kwargs['event_hooks'] = {'response': [self._on_response]}
         return httpx.Client(**kwargs)
+
+    def _on_response(self, response) -> None:
+        """httpx response hook → BlockPredictor.record_request."""
+        predictor = getattr(self, '_block_predictor', None)
+        if predictor is None:
+            return
+        try:
+            latency = (
+                response.elapsed.total_seconds()
+                if response.elapsed else 0.0
+            )
+            # content length — access through response.content triggers
+            # the stream read; for hooks, we use headers when available
+            # to avoid double-read issues.
+            size = None
+            cl = response.headers.get('content-length')
+            if cl is not None:
+                try:
+                    size = int(cl)
+                except (TypeError, ValueError):
+                    size = None
+            predictor.record_request(
+                status_code=response.status_code,
+                latency_s=latency,
+                response_size=size,
+                engine=self.name,
+            )
+        except Exception as e:
+            logger.debug(f"block_predictor record_request failed: {e}")
 
     def login_with_cookies(self, cookies_list) -> bool:
         """
