@@ -143,9 +143,10 @@ class TestReopenModal(unittest.TestCase):
             result = eng._reopen_modal('tiagopsilv', 'followers')
         self.assertTrue(result)
 
-    @patch('instat.engines.selenium_engine.human_delay', return_value=0)
-    @patch('instat.engines.selenium_engine.Utils')
+    @patch('instat.modal_interaction.human_delay', return_value=0)
+    @patch('instat.modal_interaction.Utils')
     def test_reopen_modal_returns_false_when_link_not_found(self, MockUtils, _hd):
+        # Reopen now delegates to ModalInteraction — patch there.
         from instat.engines.selenium_engine import SeleniumEngine
         eng = SeleniumEngine()
         eng._driver = MagicMock()

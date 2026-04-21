@@ -19,8 +19,9 @@ try:
     from instat.config.selector_loader import SelectorLoader
     from instat.constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE, human_delay
     from instat.engines.base import BaseEngine
-    from instat.exceptions import BlockedError, ProfileNotFoundError
+    from instat.exceptions import BlockedError
     from instat.login import InstaLogin
+    from instat.modal_interaction import ModalInteraction
     from instat.session_cache import SessionCache
     from instat.utils import Utils
 except ImportError:
@@ -29,8 +30,9 @@ except ImportError:
     from config.selector_loader import SelectorLoader
     from constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE, human_delay
     from engines.base import BaseEngine
-    from exceptions import BlockedError, ProfileNotFoundError
+    from exceptions import BlockedError
     from login import InstaLogin
+    from modal_interaction import ModalInteraction  # type: ignore
     from session_cache import SessionCache
     from utils import Utils
 
@@ -66,6 +68,7 @@ class SeleniumEngine(BaseEngine):
         self._imap_config = imap_config
         self._login_obj = None
         self._driver = None
+        self._modal: Optional[ModalInteraction] = None  # built lazily post-login
         self._session_cache = SessionCache()
         self._selectors = SelectorLoader()
         self._save_login_dismissed = False  # PERF-01 Fix 4: skip dismiss after first call
@@ -167,54 +170,38 @@ class SeleniumEngine(BaseEngine):
             total += dec_val * factor
         return total
 
+    def _get_modal(self) -> ModalInteraction:
+        """Lazy-built ModalInteraction. Requires self._driver (post-login)."""
+        if getattr(self, '_modal', None) is None:
+            self._modal = ModalInteraction(
+                driver=self._driver,
+                selectors=self._selectors,
+                timeout=self.timeout,
+                base_url=self._base_url,
+                dismiss_save_login=self._dismiss_save_login_once,
+            )
+        return self._modal
+
+    def _dismiss_save_login_once(self) -> None:
+        """Callback plugged into ModalInteraction. Runs the
+        save-login-info dismiss only on the first navigation per
+        session (PERF-01 Fix 4)."""
+        if self._save_login_dismissed:
+            return
+        close_kw = (
+            self._login_obj.close_keywords if self._login_obj
+            else ["not now", "save"]
+        )
+        Utils.dismiss_save_login_modal(self._driver, close_kw, timeout=3)
+        self._save_login_dismissed = True
+
     def _navigate_and_get_link(self, profile_id: str, list_type: str):
-        url = f"{self._base_url}/{profile_id}/"
-        logger.info("Navigating to profile: {}", url)
-        try:
-            self._driver.get(url)
-        except WebDriverException as e:
-            logger.exception("Error navigating to profile: {}", e)
-            return None
-
-        # Save login modal typically appears only once after login.
-        # Skip the 3s check after first navigation attempt.
-        if not self._save_login_dismissed:
-            close_kw = self._login_obj.close_keywords if self._login_obj else ["not now", "save"]
-            Utils.dismiss_save_login_modal(self._driver, close_kw, timeout=3)
-            self._save_login_dismissed = True
-
-        selector_key_map = {
-            'followers': "FOLLOWERS_LINK",
-            'following': "FOLLOWING_LINK"
-        }
-        selector_key = selector_key_map.get(list_type)
-        if not selector_key:
-            logger.error("Invalid list type provided: {}", list_type)
-            return None
-
-        selector_alternatives = self._selectors.get_all(selector_key)
-        link = Utils.find_element_with_fallback(self._driver, selector_alternatives, timeout=self.timeout)
-        if link:
-            return link
-
-        logger.error("Could not find {} link for '{}' with any selector alternative.", list_type, profile_id)
-        raise ProfileNotFoundError(f"Could not find {list_type} link for '{profile_id}'")
+        """Back-compat wrapper — delegates to ModalInteraction.open."""
+        return self._get_modal().open(profile_id, list_type)
 
     def _click_link_element(self, link, list_type: str) -> bool:
-        try:
-            WebDriverWait(self._driver, self.timeout).until(EC.element_to_be_clickable(link))
-            link.click()
-            logger.debug("Clicked on the {} link.", list_type)
-            return True
-        except (TimeoutException, WebDriverException) as e:
-            logger.debug(f"Native click failed for {list_type}: {type(e).__name__}, trying JS click...")
-        try:
-            self._driver.execute_script("arguments[0].click();", link)
-            logger.debug("Clicked on the {} link via JS.", list_type)
-            return True
-        except WebDriverException as e:
-            logger.warning(f"JS click also failed for {list_type}: {e}")
-            return False
+        """Back-compat wrapper — delegates to ModalInteraction.click_link."""
+        return self._get_modal().click_link(link, list_type)
 
     def _extract_list(self, profile_id: str, list_type: str,
                       max_duration: Optional[float],
@@ -469,71 +456,12 @@ class SeleniumEngine(BaseEngine):
         return list(unique_profiles)
 
     def _reset_page_state(self) -> None:
-        """PERF-02 Solução D: navega para about:blank para limpar DOM state
-        entre chamadas sequenciais (get_followers → get_following).
-        Evita modal fantasma, foco travado, handlers zumbis no Firefox."""
-        try:
-            self._driver.get('about:blank')
-            human_delay(0.3, variance=0.1)
-        except Exception as e:
-            logger.debug(f"reset_page_state failed silently: {e}")
+        """Back-compat wrapper — delegates to ModalInteraction.reset_page."""
+        self._get_modal().reset_page()
 
     def _reopen_modal(self, profile_id: str, list_type: str) -> bool:
-        """PERF-03 Solução G: fecha e reabre o modal para contornar rate limit
-        do Instagram (reset do cursor de paginação server-side).
-
-        Retorna True em sucesso.
-        """
-        try:
-            # 1) Fechar modal atual (se ainda aberto)
-            try:
-                close_btn = self._driver.find_element(
-                    By.XPATH, self._selectors.get("CLOSE_MODAL_BUTTON")
-                )
-                close_btn.click()
-            except Exception:
-                # Fallback: ESC key
-                try:
-                    from selenium.webdriver.common.keys import Keys
-                    self._driver.switch_to.active_element.send_keys(Keys.ESCAPE)
-                except Exception:
-                    pass
-            human_delay(1.0, variance=0.3)
-
-            # 2) Re-navegar ao perfil (reset full state)
-            self._driver.get(f"{self._base_url}/{profile_id}/")
-            human_delay(2.0, variance=0.5)
-
-            # 3) Re-clicar no link followers/following
-            selector_key = "FOLLOWERS_LINK" if list_type == 'followers' else "FOLLOWING_LINK"
-            selector_alternatives = self._selectors.get_all(selector_key)
-            link = Utils.find_element_with_fallback(
-                self._driver, selector_alternatives, timeout=self.timeout
-            )
-            if not link:
-                logger.warning("reopen_modal: could not find list link after navigation")
-                return False
-
-            if not self._click_link_element(link, list_type):
-                logger.warning("reopen_modal: could not click list link")
-                return False
-
-            # 4) Aguardar modal carregar
-            try:
-                WebDriverWait(self._driver, self.timeout).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, 'div[role="dialog"]')
-                    )
-                )
-            except TimeoutException:
-                logger.warning("reopen_modal: dialog did not appear")
-                return False
-
-            logger.info("Modal reopened successfully")
-            return True
-        except Exception as e:
-            logger.warning(f"reopen_modal failed: {e}")
-            return False
+        """Back-compat wrapper — delegates to ModalInteraction.reopen."""
+        return self._get_modal().reopen(profile_id, list_type)
 
     def _scroll_modal_js(self) -> None:
         """Scrolla o container do modal em UMA IPC usando JS puro.
