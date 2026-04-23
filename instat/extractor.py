@@ -46,6 +46,7 @@ try:
     from instat.login import InstaLogin
     from instat.proxy import ProxyPool
     from instat.session_pool import SessionPool
+    from instat.worker_pool import WorkerPool
 except ImportError:
     from engines.engine_manager import EngineManager
     from engines.selenium_engine import SeleniumEngine
@@ -54,6 +55,7 @@ except ImportError:
     from login import InstaLogin
     from proxy import ProxyPool
     from session_pool import SessionPool
+    from worker_pool import WorkerPool  # type: ignore
 
 
 class InstaExtractor:
@@ -121,6 +123,11 @@ class InstaExtractor:
         self.timeout = timeout
         self._exporter = exporter
         self._imap_config = imap_config
+        # Persistent pool of pre-logged-in workers. Populated via
+        # `set_worker(username, password)`. When non-empty, the
+        # parallel-extraction path reuses these engines across calls
+        # instead of spinning up + logging in fresh browsers each time.
+        self._worker_pool: Optional[WorkerPool] = None
         # Stored for `get_*_with_rotation` to instantiate new extractors
         # with consistent configuration when rotating through fallback
         # accounts. Not part of the public API.
@@ -918,6 +925,35 @@ class InstaExtractor:
         return self._parallel(profile_id, 'following', workers, accounts,
                               stop_threshold, max_duration, headless)
 
+    def set_worker(self, username: str, password: str,
+                   *, proxy: Optional[str] = None) -> None:
+        """Register a pre-authenticated parallel worker.
+
+        Performs ONE login now and keeps the browser alive for future
+        `get_followers_parallel` / `get_following_parallel` calls.
+        Call multiple times to add more workers; the next parallel
+        extraction uses them all. Use `clear_workers()` to shut them
+        down when you're done.
+
+        Why this matters: each parallel call used to re-login every
+        worker (~30s each + flags IG). With `set_worker`, logins
+        happen once and sessions live across extractions."""
+        if self._worker_pool is None:
+            self._worker_pool = WorkerPool(
+                headless=self._headless,
+                timeout=self.timeout,
+                imap_config=self._imap_config,
+            )
+        self._worker_pool.add_worker(username, password, proxy=proxy)
+
+    def clear_workers(self) -> None:
+        """Shut down every worker registered via `set_worker`.
+
+        Call on teardown; otherwise browser processes linger until the
+        Python process exits."""
+        if self._worker_pool is not None:
+            self._worker_pool.clear()
+
     def _parallel(self, profile_id: str, list_type: str, workers: int,
                   accounts, stop_threshold, max_duration, headless) -> List[str]:
         try:
@@ -925,6 +961,9 @@ class InstaExtractor:
         except ImportError:
             from parallel import parallel_extract
         target = self.get_total_count(profile_id, list_type)
+        preloaded = (
+            self._worker_pool.engines() if self._worker_pool else None
+        )
         try:
             result = parallel_extract(
                 profile_id, list_type,
@@ -936,6 +975,7 @@ class InstaExtractor:
                 max_duration=max_duration,
                 headless=headless,
                 timeout=self.timeout,
+                preloaded_engines=preloaded,
             )
         except Exception as e:
             logger.warning(f"parallel extraction failed ({e}); falling back to sequential")
@@ -1162,8 +1202,10 @@ class InstaExtractor:
         return total
 
     def quit(self) -> None:
-        """Closes the underlying WebDriver instance."""
+        """Closes the underlying WebDriver instance and any persistent
+        parallel workers registered via `set_worker`."""
         self._engine_manager.quit_all()
+        self.clear_workers()
 
 
 if __name__ == '__main__':
