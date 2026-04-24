@@ -1,6 +1,6 @@
 """ChallengeResolver / ChallengeResolverChain + EmailChallengeResolver."""
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
@@ -162,6 +162,45 @@ class TestEmailChallengeResolverResolve(unittest.TestCase):
             return MagicMock()
         driver.find_element.side_effect = fe
         self.assertFalse(r.resolve(driver))
+
+
+class TestEmailChallengeRetroactiveWindow(unittest.TestCase):
+    """started_at must be retroactive to tolerate emails IG sent
+    automatically when the challenge page first loaded (before we
+    had a chance to click 'Get a new code')."""
+
+    _FAKE_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    def _mk(self):
+        selectors = MagicMock()
+        selectors.get_all.side_effect = lambda key: {
+            'EMAIL_CHALLENGE_HEADING': ["h2"],
+            'EMAIL_CHALLENGE_GET_NEW_CODE': ["//span[@label='Get a new code']"],
+            'EMAIL_CHALLENGE_INPUT': ["input"],
+            'EMAIL_CHALLENGE_CONTINUE': ["//div[@role='button']"],
+        }.get(key, [])
+        return EmailChallengeResolver(
+            selector_loader=selectors,
+            imap_config={'host': 'x', 'user': 'u', 'password': 'p'},
+            clock=lambda: self._FAKE_NOW,
+        )
+
+    @patch('instat.challenge_resolvers.human_delay', return_value=0)
+    def test_click_branch_window_is_ten_minutes(self, _hd):
+        r = self._mk()
+        driver = MagicMock()
+        driver.find_element.return_value = MagicMock()  # button is there
+        started_at = r._click_get_new_code_then_mark_time(driver)
+        self.assertEqual(started_at, self._FAKE_NOW - timedelta(minutes=10))
+
+    @patch('instat.challenge_resolvers.human_delay', return_value=0)
+    def test_no_click_branch_window_is_ten_minutes(self, _hd):
+        from selenium.common.exceptions import NoSuchElementException
+        r = self._mk()
+        driver = MagicMock()
+        driver.find_element.side_effect = NoSuchElementException()
+        started_at = r._click_get_new_code_then_mark_time(driver)
+        self.assertEqual(started_at, self._FAKE_NOW - timedelta(minutes=10))
 
 
 class TestInstaLoginIntegration(unittest.TestCase):

@@ -37,7 +37,7 @@ Adding a new resolver:
   4. Register in the chain.
 """
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, List, Optional
 
 from loguru import logger
@@ -178,9 +178,32 @@ class EmailChallengeResolver(ChallengeResolver):
     # ------------------------ steps ---------------------------------
 
     def _click_get_new_code_then_mark_time(self, driver: Any) -> datetime:
-        """Click 'Get a new code' (if present) and return the UTC
-        timestamp MARKED BEFORE the click — used as IMAP since filter
-        so we never pick up residual codes from prior attempts."""
+        """Click 'Get a new code' (if present) and return a UTC
+        timestamp used as the IMAP `SINCE` filter.
+
+        Why a retroactive margin:
+          IG frequently sends the verification email BEFORE our click
+          happens — either because the challenge page already shipped
+          a fresh email when it first loaded, or because an earlier
+          login flow (same account, moments ago) triggered one. A
+          strict `started_at = now` filter rejects that already-in-
+          inbox message and the flow dead-ends at block detection.
+
+        Window: always -10 min.
+          Observed in practice: even when "Get a new code" is clicked
+          successfully, IG frequently does NOT dispatch a fresh email
+          (rate-limited server side — it just reuses the verification
+          code already sent, which may be 5-8 min old). A -2 min
+          window misses those. -10 min reliably captures the email
+          IG actually sent, whether automatic on page-load or after
+          our click.
+
+        Tradeoff: may pick up a slightly stale code. IG accepts it if
+        still valid; if expired, the submit fails and we land in the
+        same place as before (block detection). The -10 min window
+        trades a rare "stale code" attempt for the common "miss the
+        real email" failure.
+        """
         clicked = False
         for sel in self._selectors.get_all(self.NEW_CODE_KEY):
             try:
@@ -194,11 +217,10 @@ class EmailChallengeResolver(ChallengeResolver):
                 break
             except NoSuchElementException:
                 continue
-        started_at = self._clock()
+        now = self._clock()
         if clicked:
-            # Wait for IG to process + SMTP deliver.
             human_delay(6.0, variance=1.0)
-        return started_at
+        return now - timedelta(minutes=10)
 
     def _fetch_code_via_imap(self, started_at: datetime) -> Optional[str]:
         cfg = ImapConfig.from_dict(self._imap_config)
