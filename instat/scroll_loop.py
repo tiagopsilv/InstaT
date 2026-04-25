@@ -115,10 +115,12 @@ class ScrollLoop:
         completion_threshold: float = 0.90,
         engine_name: str = "selenium",
         block_predictor: Any = None,
+        diagnostics: Any = None,
     ) -> None:
         self._driver = driver
         self._selectors = selectors
         self._reopen_modal = reopen_modal
+        self._diagnostics = diagnostics
         self.pause_time = pause_time
         self.wait_interval = wait_interval
         self.warmup_threshold = warmup_threshold
@@ -270,11 +272,28 @@ class ScrollLoop:
                 f"Reopening modal "
                 f"(attempt {state.reopen_attempts}/{self.MAX_REOPEN_ATTEMPTS})..."
             )
+            # Snapshot the DOM right before reopen: captures the
+            # stalled modal state so we can tell apart "list exhausted"
+            # vs "IG rate-limited us" vs "scroll container changed".
+            self._dx("scroll_stale_triggering_reopen", context={
+                "collected": len(unique),
+                "stale_rounds": state.stale_rounds,
+                "effective_limit": effective_limit,
+                "reopen_attempt": state.reopen_attempts,
+                "profile_id": profile_id,
+                "list_type": list_type,
+            })
             reopen_ok = self._reopen_modal(profile_id, list_type)
             if not reopen_ok:
                 self._record_stale(
                     state.stale_rounds, effective_limit, reopen_failed=True,
                 )
+                self._dx("scroll_reopen_failed", context={
+                    "collected": len(unique),
+                    "reopen_attempt": state.reopen_attempts,
+                    "profile_id": profile_id,
+                    "list_type": list_type,
+                })
                 logger.warning("Reopen failed — stopping extraction.")
                 return True
             state.stale_rounds = 0
@@ -286,6 +305,17 @@ class ScrollLoop:
             f"+ {state.reopen_attempts} reopen attempts — end of list."
         )
         return True
+
+    def _dx(self, event: str, *, exc: Any = None, context: Any = None) -> None:
+        """Capture a diagnostic bundle if wired. Never raises."""
+        if self._diagnostics is None:
+            return
+        try:
+            self._diagnostics.capture(
+                self._driver, event=event, exc=exc, context=context,
+            )
+        except Exception as e:
+            logger.debug(f"ScrollLoop: diagnostics capture failed: {e}")
 
     def _record_stale(
         self, stale_count: int, max_stale: int, *, reopen_failed: bool,
@@ -350,6 +380,12 @@ class ScrollLoop:
             f"({len(unique)}/{expected_count}). "
             f"Raising BlockedError to trigger engine fallback."
         )
+        self._dx("scroll_partial_coverage", context={
+            "collected": len(unique),
+            "expected": expected_count,
+            "coverage_pct": round(100 * coverage, 1),
+            "threshold_pct": round(100 * self.completion_threshold, 1),
+        })
         raise BlockedError(
             f"{self._engine_name} partial coverage: "
             f"{len(unique)}/{expected_count} ({100*coverage:.0f}%)"

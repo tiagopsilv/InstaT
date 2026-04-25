@@ -32,6 +32,10 @@ except ImportError:
         EmailChallengeResolver,
     )
 try:
+    from instat.diagnostics import DiagnosticCollector
+except ImportError:
+    from diagnostics import DiagnosticCollector  # type: ignore
+try:
     from instat.login_flow import FormLogin, SessionRestorer
 except ImportError:
     from login_flow import FormLogin, SessionRestorer  # type: ignore
@@ -74,7 +78,8 @@ class InstaLogin:
 
     def __init__(self, username, password, headless=True, timeout=10,
                  session_cache=None, base_url=None, imap_config=None,
-                 block_detector=None, challenge_chain=None):
+                 block_detector=None, challenge_chain=None,
+                 diagnostics=None):
         self.username = username
         self.password = password
         self.timeout = timeout
@@ -86,6 +91,10 @@ class InstaLogin:
         # extra_checks() to add new detection paths without touching
         # the login flow.
         self._block_detector = block_detector or BlockDetector()
+        # Diagnostics: single collector reused across the login flow
+        # and handed to phase collaborators so each failure point
+        # produces a full bundle without duplicating setup.
+        self._diagnostics = diagnostics or DiagnosticCollector()
         logger.info("Initializing InstaLogin instance")
         self.driver = self.init_driver(headless)
         self.close_keywords = ["not now", "agora não", "salvar", "save", "skip", "not now", "ahora no", "jetzt nicht"]
@@ -104,6 +113,7 @@ class InstaLogin:
             selector_loader=self.selectors,
             base_url=self._base_url,
             timeout=self.timeout,
+            diagnostics=self._diagnostics,
         )
 
     def _default_challenge_chain(self) -> ChallengeResolverChain:
@@ -114,6 +124,7 @@ class InstaLogin:
                 selector_loader=self.selectors,
                 imap_config=self._imap_config,
                 timeout=self.timeout,
+                diagnostics=getattr(self, "_diagnostics", None),
             ),
         ])
 
@@ -221,7 +232,7 @@ class InstaLogin:
         """Screenshot + log + raise. Shared reaction path for every
         detection kind so the log shape stays consistent."""
         tag = self._tag_for_kind(info.kind, info.indicator)
-        screenshot_path = self._save_block_evidence(driver, tag)
+        screenshot_path = self._capture_block_evidence(driver, tag, info)
         self._log_block(info, screenshot_path)
         raise AccountBlockedError(
             f"Conta bloqueada: {info.reason}. {info.action}",
@@ -229,6 +240,27 @@ class InstaLogin:
             url=info.url,
             screenshot_path=screenshot_path,
         )
+
+    def _capture_block_evidence(self, driver, tag: str, info: BlockInfo) -> str:
+        """Produce a diagnostic bundle if wired; fall back to legacy
+        `_save_block_evidence` when tests bypass __init__ (no
+        collector) or when capture is rate-limited."""
+        dx = getattr(self, "_diagnostics", None)
+        if dx is not None:
+            bundle = dx.capture(
+                driver,
+                event=f"block_{tag}",
+                context={
+                    "kind": info.kind,
+                    "indicator": info.indicator,
+                    "reason": info.reason,
+                    "action": info.action,
+                },
+            )
+            if bundle:
+                shot = Path(bundle) / "screenshot.png"
+                return str(shot) if shot.exists() else bundle
+        return self._save_block_evidence(driver, tag)
 
     @staticmethod
     def _tag_for_kind(kind: str, indicator: str) -> str:

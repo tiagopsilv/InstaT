@@ -300,6 +300,10 @@ class SeleniumEngine(BaseEngine):
         """Factory — reads current engine config + optional
         block_predictor (opt-in via setattr) at call time. Binds
         `self._reopen_modal` so test patches on the wrapper propagate."""
+        diagnostics = getattr(self, "_diagnostics", None)
+        if diagnostics is None:
+            diagnostics = getattr(self._login_obj, "_diagnostics", None) \
+                if self._login_obj else None
         return ScrollLoop(
             driver=self._driver,
             selectors=self._selectors,
@@ -312,6 +316,7 @@ class SeleniumEngine(BaseEngine):
             completion_threshold=self.completion_threshold,
             engine_name=self.name,
             block_predictor=getattr(self, "_block_predictor", None),
+            diagnostics=diagnostics,
         )
 
     def _reset_page_state(self) -> None:

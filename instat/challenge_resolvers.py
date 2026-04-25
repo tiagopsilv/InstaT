@@ -133,11 +133,22 @@ class EmailChallengeResolver(ChallengeResolver):
         self, selector_loader: Any, imap_config: Any,
         timeout: int = 10,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        diagnostics: Any = None,
     ) -> None:
         self._selectors = selector_loader
         self._imap_config = imap_config
         self._timeout = timeout
         self._clock = clock
+        self._diagnostics = diagnostics
+
+    def _dx(self, driver: Any, event: str, *, exc: Any = None, context: Any = None) -> None:
+        """Capture a diagnostic bundle if wired. Never raises."""
+        if self._diagnostics is None:
+            return
+        try:
+            self._diagnostics.capture(driver, event=event, exc=exc, context=context)
+        except Exception as e:
+            logger.debug(f"EmailChallengeResolver: diagnostics capture failed: {e}")
 
     # ------------------------ detection -----------------------------
 
@@ -160,17 +171,26 @@ class EmailChallengeResolver(ChallengeResolver):
 
         code = self._fetch_code_via_imap(started_at)
         if not code:
+            self._dx(driver, "challenge_imap_no_code",
+                     context={"since_utc": started_at.isoformat()})
             return False
 
         input_el = self._find_input(driver)
         if input_el is None:
             logger.warning("Email challenge input not found after detection")
+            self._dx(driver, "challenge_input_not_found")
             return False
 
         self._fill_input(driver, input_el, code)
 
         if not self._click_continue(driver, input_el):
             logger.warning("Could not click Continue on email challenge")
+            # The code was filled + every click strategy ran but the
+            # heading didn't go away. Most often: IG rejected the code
+            # (stale / invalid / rate-limited resend). This bundle is
+            # the key to diagnosing WHY on the next change.
+            self._dx(driver, "challenge_continue_failed",
+                     context={"code_length": len(code)})
             return False
 
         return self._wait_challenge_gone(driver)
