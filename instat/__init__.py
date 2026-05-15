@@ -23,9 +23,20 @@ from .exceptions import (
     RateLimitError,
 )
 from .exporters import BaseExporter, CallbackExporter, CSVExporter, JSONExporter, SQLiteExporter
+from .extraction_result import ExtractionResult
 from .extractor import InstaExtractor
+from .logging_config import configure_logging
 from .login import InstaLogin
+from .post_metrics import PostMetrics, parse_hashtags, parse_post_from_api
 from .profile import Profile
+from .profile_summary import ProfileSummary
+from .providers import (
+    brightdata_basic_auth,
+    brightdata_cdp_endpoint,
+    brightdata_playwright_engine,
+    brightdata_selenium_engine,
+    brightdata_webdriver_endpoint,
+)
 from .proxy import ProxyPool, ProxyState
 from .session_cache import SessionCache
 from .session_pool import Session, SessionPool
@@ -64,6 +75,17 @@ __all__ = [
     "SQLiteExporter",
     "CallbackExporter",
     "Profile",
+    "PostMetrics",
+    "parse_hashtags",
+    "parse_post_from_api",
+    "ProfileSummary",
+    "ExtractionResult",
     "ImapConfig",
     "fetch_instagram_code",
+    "configure_logging",
+    "brightdata_basic_auth",
+    "brightdata_cdp_endpoint",
+    "brightdata_webdriver_endpoint",
+    "brightdata_playwright_engine",
+    "brightdata_selenium_engine",
 ]

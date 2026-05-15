@@ -233,6 +233,351 @@ followers = ext.get_followers_parallel(
 
 ---
 
+## Rich metadata + audit telemetry
+
+Two opt-in flags upgrade what the extraction call returns:
+
+### `with_metadata=True` — `List[ProfileSummary]` instead of `List[str]`
+
+When httpx is in the cascade, each follower entry comes back with the
+basic profile fields IG ships in the bulk API:
+
+```python
+summaries = ext.get_followers(
+    "target_profile",
+    with_metadata=True,   # opt-in; List[str] is still the default
+)
+
+for s in summaries:
+    print(s.username, s.user_id, s.is_verified, s.is_business)
+```
+
+`ProfileSummary` fields: `username`, `user_id`, `full_name`,
+`is_private`, `is_verified`, `is_business`, `profile_pic_url`. All
+optional — `None` means "engine could not provide". Note that
+`follower_count` per follower is **not** in the bulk endpoint (IG
+doesn't ship it); call `get_total_count(username, ...)` per entry if
+needed.
+
+When the cascade falls back to Selenium/Playwright (DOM scraping has
+no metadata), each entry becomes a `ProfileSummary(username=...)` with
+everything else `None`. Pipelines that need `user_id` should include
+`"httpx"` in their `engines=[...]`.
+
+### `get_followers_with_metrics(...)` — wrap result in `ExtractionResult`
+
+Telemetry alongside the data — pipeline writes `result.to_dict()` to
+BigQuery's audit JSON column without parsing log files.
+
+```python
+result = ext.get_followers_with_metrics("target_profile")
+
+result.profiles            # List[str] (or List[ProfileSummary] when with_metadata=True)
+result.collected_count     # 4587
+result.expected_count      # 5000  (from IG header; None on failure)
+result.coverage_pct        # 0.917
+result.partial             # True if cross-engine partial fallback fired
+result.engine_used         # 'selenium' | 'httpx' | 'playwright-chromium'
+result.sessions_used       # ['bot_alpha']  (empty without SessionPool)
+result.duration_seconds    # 312.4
+result.rate_limit_hits     # 0
+result.block_predictor_score  # 0.12  (None if predictor not wired)
+result.started_at / finished_at  # UTC datetimes
+
+bq_client.insert_rows_json(
+    "Influ.extraction_audit",
+    [{"queue_id": qid, **result.to_dict()}],
+)
+```
+
+### `should_stop` — graceful early exit
+
+`get_followers(should_stop=callable)` polls the callable between
+batches; returning `True` stops the loop after the current batch
+without raising. Useful when you only need N qualified candidates:
+
+```python
+qualified = []
+
+def stop_when_enough() -> bool:
+    return len(qualified) >= 100
+
+# Pipeline pre-filters as it consumes the eventual return; or via
+# on_batch hook elsewhere — should_stop is just the stop signal.
+followers = ext.get_followers(
+    "huge_target",
+    should_stop=stop_when_enough,
+    with_metadata=True,
+)
+```
+
+Honored by Selenium (per-batch check inside scroll loop) and Httpx
+(between paginated requests). Playwright respects it too. Granularity
+is ~1 batch / ~1 round-trip.
+
+### `use_stdlib_logging=True` — forward to stdlib logging
+
+InstaT writes Loguru-formatted records to stderr and a rotating file
+at `instat/logs/insta_extractor.log` by default. Inside a K8s pod
+that file is ephemeral. Set the flag and records get forwarded to
+`logging.getLogger("instat.*")` — Cloud Logging / journald / any
+stdlib handler picks them up automatically:
+
+```python
+ext = InstaExtractor(user, pw, use_stdlib_logging=True)
+```
+
+Or via the module function (call once at process start, before any
+`InstaExtractor()` is constructed if you want global effect):
+
+```python
+from instat import configure_logging
+configure_logging(use_stdlib=True)
+```
+
+`configure_logging(use_stdlib=False, file_log=False)` is also valid —
+keeps the colored stderr sink but drops the disk file (useful in
+serverless / container environments without persistent FS).
+
+---
+
+## Post metrics (engagement / TEP)
+
+`get_recent_posts(profile_id, limit=N)` returns the last N posts of a
+profile with the engagement fields needed to compute metrics like TEP
+(Taxa de Engajamento por Post = `(likes + comments) / followers × 100`).
+
+**InstaT does extraction only — it does not compute TEP itself.** The
+consumer pipeline owns analytics decisions.
+
+```python
+from instat import InstaExtractor
+
+ext = InstaExtractor(
+    user, pw,
+    engines=["selenium", "httpx"],   # httpx is required for post fetch
+)
+
+profile = ext.get_profile("target_profile")
+posts = ext.get_recent_posts("target_profile", limit=5)
+
+# TEP per post
+for post in posts:
+    if post.likes_count is None or post.comments_count is None:
+        continue   # IG hides counts on some Reels — skip cleanly
+    tep = (post.likes_count + post.comments_count) / profile.followers_count * 100
+    print(f"{post.shortcode}: TEP={tep:.2f}%  hashtags={post.hashtags}")
+
+# Mean TEP (TME) across the sample
+valid = [p for p in posts if p.likes_count is not None and p.comments_count is not None]
+tme = sum((p.likes_count + p.comments_count) for p in valid) / (len(valid) * profile.followers_count) * 100
+```
+
+`PostMetrics` shape (importable from `instat`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `shortcode` | `str` | URL slug `instagram.com/p/<shortcode>/`. Stable. |
+| `likes_count` | `int \| None` | None when IG hides (some Reels). |
+| `comments_count` | `int \| None` | Same as above. |
+| `timestamp` | `datetime \| None` | UTC. |
+| `caption` | `str \| None` | Raw text. |
+| `hashtags` | `list[str]` | Lowercased, deduplicated, first-occurrence order. |
+| `media_type` | `'image' \| 'video' \| 'carousel' \| None` | |
+| `media_url` | `str \| None` | First image (carousel cover or post). Useful for downstream CNN. |
+
+**Engine support.** Only `HttpxEngine` implements `get_recent_posts`
+today (via the private `/feed/user/{user_id}/` endpoint). Selenium and
+Playwright raise `NotImplementedError` and the `EngineManager`
+cascades silently to the next engine. Always include `httpx` in your
+engines list when you need post metrics:
+
+```python
+ext = InstaExtractor(user, pw, engines=["selenium", "httpx"])
+```
+
+When called against a cascade where the primary is Selenium, the
+manager performs an in-process cookie handoff so httpx inherits the
+authenticated session — no separate login required.
+
+---
+
+## Bright Data Scraping Browser (PUBLIC content only)
+
+> **Policy update (2026-05-15, per BD support guidance):** Bright Data
+> explicitly forbids automated Instagram logins. The `scraping_browser1`
+> zone is allowed to scrape Instagram, **but only public content
+> accessible in incognito** (public profiles, hashtag pages, the
+> `/explore/` tree, public post URLs). Automated logins, private
+> profiles, stories, DMs, anything behind auth — **violates BD policy**
+> and risks zone suspension.
+
+This means BD Scraping Browser is **not a drop-in fallback for the
+InstaT logged-in cascade** (which is how `get_followers` /
+`get_following` work — they require an authenticated session). For
+logged extraction stay on **local Selenium + Residential Proxies**
+(see `proxies=[...]` kwarg); BD Residential is sold separately and
+has no per-domain compliance gating.
+
+The remaining valid use case for BD Scraping Browser:
+- Scraping public profile metadata at scale (analogous to
+  `get_profile()` but via DOM scrape, no login)
+- Hashtag / explore page enrichment
+- Public post URLs
+
+```python
+from instat import (
+    InstaExtractor,
+    brightdata_playwright_engine,
+)
+
+# auth_mode='header' (default, BD-recommended) — credentials go in
+# Authorization: Basic <b64> header, not in the WebSocket URL.
+brd = brightdata_playwright_engine(
+    customer_id="hl_xxxxxxxx",
+    zone="scraping_browser1",
+    password="<zone-password>",
+    # auth_mode="url"     # legacy: embedded creds in URL, still supported
+)
+
+# Plug into engines list for PUBLIC scraping only. Avoid pairing with
+# the logged-in cascade — running .get_followers() through this engine
+# would attempt to fetch followers without auth and fail.
+ext = InstaExtractor(
+    user, pw,
+    engines=[brd],   # public scrape only — no get_followers/get_following
+)
+```
+
+For Selenium-style remote (BD's WebDriver port `:9515` instead of
+WebSocket CDP), use the symmetric helper:
+
+```python
+from instat import brightdata_selenium_engine
+
+brd_sel = brightdata_selenium_engine(
+    customer_id="hl_xxxxxxxx",
+    zone="scraping_browser1",
+    password="<zone-password>",
+)
+```
+
+This builds a `SeleniumEngine` with `webdriver.Remote` pointing at BD,
+**`pageLoadStrategy='eager'`** baked in (BD's full Chrome desktop hangs
+indefinitely with the default `'normal'` strategy on Instagram —
+discovered in InstaT live testing 2026-05-14).
+
+### Cost & compliance considerations
+
+- **No automated logins** — explicit BD policy (per their 2026-05-15
+  support email). Violating this can get your zone suspended.
+- Only public content (incognito-visible). Private profiles, stories,
+  DMs, and any behind-auth content are off-limits.
+- Pricing is bandwidth-based ($8/GB at typical 2026 rates). Each
+  follower extraction sends ~500KB-2MB through the remote browser.
+  Reserve BD for the fallback role; primary load belongs on local
+  Selenium + cheaper residential proxies routed through `proxies=[...]`.
+- The HttpxEngine path (`engines=[..., "httpx"]`) does **not** go
+  through BD — it uses cookie handoff from the active Selenium driver
+  and talks directly to IG's private API. Free of BD bandwidth cost.
+
+---
+
+## Remote browser providers (advanced, custom config)
+
+When the helpers above aren't enough — different provider, custom
+endpoint, or special connect options — `engines=[...]` accepts any
+`BaseEngine` instance you build directly.
+
+### PlaywrightEngine via CDP (Bright Data / Browserless cloud)
+
+```python
+from instat import InstaExtractor
+from instat.engines.playwright_engine import PlaywrightEngine
+
+# Bright Data Scraping Browser
+brd = PlaywrightEngine(
+    connect_endpoint=(
+        "wss://brd-customer-<ID>-zone-<ZONE>:<PASSWORD>"
+        "@brd.superproxy.io:9222"
+    ),
+    connect_mode="cdp",   # default
+)
+
+# Browserless cloud
+bl = PlaywrightEngine(
+    connect_endpoint="wss://chrome.browserless.io?token=<TOKEN>",
+    connect_mode="cdp",
+)
+
+ext = InstaExtractor(
+    "user", "pass",
+    engines=["selenium", brd],   # mistura local + remoto na cascata
+)
+```
+
+`connect_endpoint` ativa o ramo remoto: o engine usa
+`chromium.connect_over_cdp(endpoint)` em vez de `launch()`. `headless`
+é controlado pelo provider — o kwarg local fica ignorado. Use
+`connect_mode="ws"` (em vez de `"cdp"`) pra falar com um Playwright
+Server (`chromium.connect(...)`).
+
+`browser_type` precisa ser `"chromium"` quando há endpoint — Bright
+Data e Browserless são chromium-only.
+
+### SeleniumEngine via webdriver.Remote
+
+`SeleniumEngine` aceita um `webdriver_factory: Callable[[bool],
+WebDriver]`. O factory recebe o flag `headless` e devolve um driver
+pronto — pode ser `webdriver.Remote` apontando pra qualquer Selenium
+Grid / Bright Data / Browserless / self-hosted.
+
+```python
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from instat import InstaExtractor
+from instat.engines.selenium_engine import SeleniumEngine
+
+def browserless_factory(headless: bool):
+    opts = Options()
+    opts.set_capability("browserless:token", "<TOKEN>")
+    return webdriver.Remote(
+        command_executor="https://chrome.browserless.io/webdriver",
+        options=opts,
+    )
+
+remote_selenium = SeleniumEngine(
+    headless=True, timeout=20,
+    webdriver_factory=browserless_factory,
+)
+
+ext = InstaExtractor(
+    "user", "pass",
+    engines=[remote_selenium, "httpx"],
+)
+```
+
+InstaLogin pula todo o setup local de Firefox/GeckoDriver e usa o
+driver devolvido pelo factory. O fluxo de login (form fill, challenge
+resolve, block detection) e a extração rodam normalmente contra a
+sessão remota.
+
+**Notas operacionais**
+
+- `quit()` chama `driver.quit()` no driver injetado — libera a sessão
+  remota e a quota associada. Se você quer manter o driver vivo após
+  a extração, devolva no factory um wrapper cujo `.quit()` seja no-op.
+- Cookies do `SessionCache` continuam funcionando: o login persiste e
+  o próximo run pode usar cookies cached mesmo trocando entre local e
+  remoto, desde que o `username` seja o mesmo.
+- `get_*_with_rotation` e `get_*_persistent` reconstroem extractors
+  internamente; engines passadas como instância NÃO são reusadas
+  nesses caminhos (a config remota fica opaca pra clonagem). Use
+  strings (`engines=["selenium"]`) se precisar de rotação automática
+  com nova conta.
+
+---
+
 ## External API fallback (`HttpxEngine`)
 
 By design, external Instagram API calls are only used when the browser-based cascade cannot complete. Two cookie paths keep this reliable:

@@ -44,6 +44,19 @@ class TestSeleniumEngine(unittest.TestCase):
         engine.quit()  # should not raise
 
     @patch('instat.engines.selenium_engine.InstaLogin')
+    def test_webdriver_factory_propagated_to_login(self, MockLogin):
+        mock_instance = MockLogin.return_value
+        mock_instance.driver = MagicMock()
+        mock_instance.login.return_value = True
+
+        factory = MagicMock(name='webdriver_factory')
+        engine = SeleniumEngine(headless=False, webdriver_factory=factory)
+        engine.login('user', 'pass')
+
+        kwargs = MockLogin.call_args.kwargs
+        self.assertIs(kwargs.get('webdriver_factory'), factory)
+
+    @patch('instat.engines.selenium_engine.InstaLogin')
     def test_extract_returns_set(self, MockLogin):
         mock_instance = MockLogin.return_value
         mock_instance.driver = MagicMock()

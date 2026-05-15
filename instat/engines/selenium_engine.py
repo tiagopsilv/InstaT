@@ -59,13 +59,24 @@ class SeleniumEngine(BaseEngine):
 
     def __init__(self, headless=True, timeout=10, _login_class=None,
                  proxy: Optional[str] = None, base_url: Optional[str] = None,
-                 imap_config=None, **kwargs):
+                 imap_config=None,
+                 webdriver_factory: Optional[Callable[[bool], object]] = None,
+                 **kwargs):
+        """
+        webdriver_factory: callable que recebe `headless` e devolve um
+          selenium WebDriver pronto. Quando fornecido, substitui a
+          inicialização local de Firefox/GeckoDriver — habilita injetar
+          drivers remotos (webdriver.Remote contra Bright Data,
+          Browserless ou Selenium Grid). InstaLogin reusa o driver
+          devolvido para todo o fluxo de login + extração.
+        """
         self.headless = headless
         self.timeout = timeout
         self._login_class = _login_class or InstaLogin
         self._proxy = proxy  # stored for BL-13 integration with FirefoxOptions
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
         self._imap_config = imap_config
+        self._webdriver_factory = webdriver_factory
         self._login_obj = None
         self._driver = None
         self._modal: Optional[ModalInteraction] = None  # built lazily post-login
@@ -102,6 +113,7 @@ class SeleniumEngine(BaseEngine):
             session_cache=self._session_cache,
             base_url=self._base_url,
             imap_config=self._imap_config,
+            webdriver_factory=self._webdriver_factory,
         )
         self._login_obj.login()
         self._driver = self._login_obj.driver
@@ -111,13 +123,24 @@ class SeleniumEngine(BaseEngine):
                 existing_profiles: Optional[Set[str]] = None,
                 max_duration: Optional[float] = None,
                 on_batch: Optional[Callable] = None,
-                should_stop: Optional[Callable[[], bool]] = None) -> Set[str]:
+                should_stop: Optional[Callable[[], bool]] = None,
+                with_metadata: bool = False):
+        """with_metadata é aceito pra contrato uniforme com httpx, mas
+        Selenium DOM scraping só vê username — degrada gracefully pra
+        ProfileSummary(username=..., everything-else=None). Pipelines
+        que dependem de user_id devem incluir httpx no cascade."""
         result = self._extract_list(
             profile_id, list_type, max_duration,
             existing_profiles=existing_profiles,
             on_batch=on_batch,
             should_stop=should_stop,
         )
+        if with_metadata:
+            try:
+                from instat.profile_summary import ProfileSummary
+            except ImportError:
+                from profile_summary import ProfileSummary  # type: ignore
+            return [ProfileSummary.from_username(u) for u in result]
         return set(result)
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:

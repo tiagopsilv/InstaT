@@ -128,5 +128,31 @@ class TestInstaLogin(unittest.TestCase):
         result = self.client.login()
         self.assertTrue(result)
 
+class TestInstaLoginWebdriverFactory(unittest.TestCase):
+    """init_driver should bypass Firefox setup when a webdriver_factory
+    is injected — used for remote browsers (Bright Data, Browserless,
+    Selenium Grid)."""
+
+    def test_init_driver_uses_factory(self):
+        # Mock SelectorLoader so InstaLogin.__init__ doesn't read disk.
+        with patch("instat.login.SelectorLoader") as mock_loader_class:
+            mock_loader_class.return_value = MagicMock()
+            with patch("instat.login.webdriver.Firefox") as mock_firefox:
+                fake_driver = MagicMock(name="remote_driver")
+                factory = MagicMock(return_value=fake_driver)
+                client = InstaLogin(
+                    "u", "p", headless=False,
+                    webdriver_factory=factory,
+                )
+                # Factory was called with the headless flag InstaLogin received.
+                factory.assert_called_once_with(False)
+                # Firefox local setup was skipped entirely.
+                mock_firefox.assert_not_called()
+                self.assertIs(client.driver, fake_driver)
+                # Stealth tweaks ran on the injected driver.
+                fake_driver.set_window_size.assert_called_once_with(375, 667)
+                fake_driver.execute_script.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=False)

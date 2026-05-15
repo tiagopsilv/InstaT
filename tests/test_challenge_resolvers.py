@@ -205,14 +205,21 @@ class TestEmailChallengeRetroactiveWindow(unittest.TestCase):
 
 class TestInstaLoginIntegration(unittest.TestCase):
 
-    def test_default_chain_contains_email_resolver(self):
+    def test_default_chain_contains_email_and_bloks_resolvers(self):
+        # Default chain ships with both resolvers — Bloks first (URL-
+        # specific, runs cheap can_handle), Email second.
+        from instat.challenge_resolvers import (
+            BloksCodeEntryResolver, EmailChallengeResolver,
+        )
         from instat.login import InstaLogin
         login = InstaLogin.__new__(InstaLogin)
         login.selectors = MagicMock()
         login._imap_config = {'host': 'x'}
         login.timeout = 10
         chain = login._default_challenge_chain()
-        self.assertEqual(len(chain), 1)
+        self.assertEqual(len(chain), 2)
+        self.assertIsInstance(chain._resolvers[0], BloksCodeEntryResolver)
+        self.assertIsInstance(chain._resolvers[1], EmailChallengeResolver)
 
     def test_custom_chain_accepted(self):
         from instat.login import InstaLogin
@@ -224,6 +231,221 @@ class TestInstaLoginIntegration(unittest.TestCase):
         login._challenge_chain = custom
         driver = MagicMock()
         self.assertTrue(login._try_handle_email_challenge(driver))
+
+
+class TestChainIteratesMultiStep(unittest.TestCase):
+    """The chain loops up to max_iterations to handle multi-step
+    challenges (email → bloks codeentry). Pin the loop semantics so a
+    future refactor doesn't silently regress to single-pass."""
+
+    def test_loops_until_no_resolver_matches(self):
+        # Stateful resolver: first pass it matches, second pass doesn't.
+        class Stateful(FakeResolver):
+            def __init__(self):
+                super().__init__('s', handle=True, resolve_result=True)
+                self.calls = 0
+            def can_handle(self, driver):
+                return self.calls == 0
+            def resolve(self, driver):
+                self.calls += 1
+                return True
+
+        s = Stateful()
+        chain = ChallengeResolverChain([s])
+        self.assertTrue(chain.try_resolve(MagicMock()))
+        self.assertEqual(s.calls, 1)
+
+    def test_multi_step_two_resolvers(self):
+        # First-pass: A matches, advances state. Second-pass: B matches,
+        # advances state. Third-pass: nothing.
+        state = {'step': 0}
+
+        class A(FakeResolver):
+            def can_handle(self, driver): return state['step'] == 0
+            def resolve(self, driver):
+                state['step'] = 1
+                return True
+
+        class B(FakeResolver):
+            def can_handle(self, driver): return state['step'] == 1
+            def resolve(self, driver):
+                state['step'] = 2
+                return True
+
+        a, b = A('a'), B('b')
+        chain = ChallengeResolverChain([a, b])
+        self.assertTrue(chain.try_resolve(MagicMock()))
+        self.assertEqual(state['step'], 2)
+
+    def test_max_iterations_caps_loop(self):
+        # Resolver that always matches and always returns False.
+        # Loop must terminate via max_iterations rather than spinning.
+        class AlwaysMatches(FakeResolver):
+            def __init__(self):
+                super().__init__('x', handle=True, resolve_result=False)
+                self.calls = 0
+            def resolve(self, driver):
+                self.calls += 1
+                return False
+
+        x = AlwaysMatches()
+        chain = ChallengeResolverChain([x])
+        result = chain.try_resolve(MagicMock(), max_iterations=3)
+        self.assertFalse(result)
+        self.assertEqual(x.calls, 3)
+
+
+class TestEmailChallengeResolverExcludesAuthPlatform(unittest.TestCase):
+    """EmailChallengeResolver must NOT match Bloks codeentry pages even
+    though they share the 'Check your email' heading — guard against
+    chain regression where both resolvers fight over the same page."""
+
+    def test_skips_when_url_contains_auth_platform(self):
+        from instat.config.selector_loader import SelectorLoader
+        loader = MagicMock(spec=SelectorLoader)
+        loader.get_all.return_value = ['h2[aria-label="Check your email"]']
+        r = EmailChallengeResolver(
+            selector_loader=loader,
+            imap_config={'host': 'x', 'user': 'x', 'password': 'x'},
+        )
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/auth_platform/codeentry/'
+        )
+        # Even if heading is present, URL guard takes precedence.
+        driver.find_element.return_value = MagicMock()
+        self.assertFalse(r.can_handle(driver))
+
+    def test_matches_when_url_is_normal_login(self):
+        from instat.config.selector_loader import SelectorLoader
+        loader = MagicMock(spec=SelectorLoader)
+        loader.get_all.return_value = ['h2[aria-label="Check your email"]']
+        r = EmailChallengeResolver(
+            selector_loader=loader,
+            imap_config={'host': 'x', 'user': 'x', 'password': 'x'},
+        )
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/accounts/login/'
+        )
+        driver.find_element.return_value = MagicMock()
+        self.assertTrue(r.can_handle(driver))
+
+
+class TestBloksCodeEntryResolver(unittest.TestCase):
+    """BloksCodeEntryResolver — Meta auth_platform/codeentry flow."""
+
+    _SENTINEL = object()
+
+    def _resolver(self, imap_config=_SENTINEL):
+        from instat.challenge_resolvers import BloksCodeEntryResolver
+        if imap_config is self._SENTINEL:
+            imap_config = {'host': 'x', 'user': 'x', 'password': 'x'}
+        return BloksCodeEntryResolver(imap_config=imap_config)
+
+    def test_can_handle_matches_codeentry_url(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/auth_platform/codeentry/'
+        )
+        self.assertTrue(r.can_handle(driver))
+
+    def test_can_handle_rejects_non_codeentry_url(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.current_url = 'https://www.instagram.com/accounts/login/'
+        self.assertFalse(r.can_handle(driver))
+
+    def test_can_handle_requires_imap_config(self):
+        r = self._resolver(imap_config=None)
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/auth_platform/codeentry/'
+        )
+        self.assertFalse(r.can_handle(driver))
+
+    def test_resolve_no_imap_code_returns_false(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/auth_platform/codeentry/'
+        )
+        with patch(
+            'instat.challenge_resolvers.fetch_instagram_code',
+            return_value=None,
+        ):
+            self.assertFalse(r.resolve(driver))
+
+    def test_resolve_input_not_found_returns_false(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.current_url = (
+            'https://www.instagram.com/auth_platform/codeentry/'
+        )
+        driver.find_element.side_effect = NoSuchElementException()
+        # execute_script: first call is cooldown parse → 0 (no wait),
+        # second is resend click → True (faked). After that the input
+        # find fails → return False.
+        driver.execute_script.side_effect = [0, True]
+        with patch(
+            'instat.challenge_resolvers.fetch_instagram_code',
+            return_value='123456',
+        ), patch(
+            'instat.challenge_resolvers.human_delay'
+        ):
+            self.assertFalse(r.resolve(driver))
+
+    def test_parse_cooldown_seconds_returns_value(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.execute_script.return_value = 45
+        self.assertEqual(r._parse_cooldown_seconds(driver), 45)
+
+    def test_parse_cooldown_seconds_zero_on_no_match(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.execute_script.return_value = 0
+        self.assertEqual(r._parse_cooldown_seconds(driver), 0)
+
+    def test_parse_cooldown_seconds_zero_on_exception(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.execute_script.side_effect = Exception("script error")
+        self.assertEqual(r._parse_cooldown_seconds(driver), 0)
+
+    def test_click_resend_returns_bool(self):
+        r = self._resolver()
+        driver = MagicMock()
+        driver.execute_script.return_value = True
+        self.assertTrue(r._click_resend(driver))
+        driver.execute_script.return_value = False
+        self.assertFalse(r._click_resend(driver))
+
+    def test_request_fresh_code_waits_cooldown_then_clicks(self):
+        r = self._resolver()
+        driver = MagicMock()
+        # First call: cooldown=10s. Second call: resend click=True.
+        driver.execute_script.side_effect = [10, True]
+        with patch('instat.challenge_resolvers.time.sleep') as mock_sleep, \
+             patch('instat.challenge_resolvers.human_delay'):
+            result = r._request_fresh_code(driver)
+        self.assertTrue(result)
+        # Slept for cooldown + 3s slack.
+        mock_sleep.assert_called_once_with(13)
+
+    def test_request_fresh_code_no_cooldown_skips_sleep(self):
+        r = self._resolver()
+        driver = MagicMock()
+        # First call: cooldown=0. Second call: resend click=True.
+        driver.execute_script.side_effect = [0, True]
+        with patch('instat.challenge_resolvers.time.sleep') as mock_sleep, \
+             patch('instat.challenge_resolvers.human_delay') as mock_delay:
+            result = r._request_fresh_code(driver)
+        self.assertTrue(result)
+        mock_sleep.assert_not_called()
+        # human_delay still called for DOM stabilisation pre-click.
+        mock_delay.assert_called()
 
 
 if __name__ == '__main__':

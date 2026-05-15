@@ -23,11 +23,13 @@ except ImportError:
     from block_detector import BlockDetector, BlockInfo  # type: ignore
 try:
     from instat.challenge_resolvers import (
+        BloksCodeEntryResolver,
         ChallengeResolverChain,
         EmailChallengeResolver,
     )
 except ImportError:
     from challenge_resolvers import (  # type: ignore
+        BloksCodeEntryResolver,
         ChallengeResolverChain,
         EmailChallengeResolver,
     )
@@ -79,13 +81,21 @@ class InstaLogin:
     def __init__(self, username, password, headless=True, timeout=10,
                  session_cache=None, base_url=None, imap_config=None,
                  block_detector=None, challenge_chain=None,
-                 diagnostics=None):
+                 diagnostics=None, webdriver_factory=None):
+        """
+        webdriver_factory: callable opcional que recebe `headless` e
+          devolve um selenium WebDriver pronto. Quando fornecido, pula
+          o setup de Firefox local (GeckoDriver) e usa o driver
+          devolvido — habilita injeção de webdriver.Remote para Bright
+          Data Scraping Browser, Browserless ou Selenium Grid.
+        """
         self.username = username
         self.password = password
         self.timeout = timeout
         self._session_cache = session_cache
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
         self._imap_config = imap_config
+        self._webdriver_factory = webdriver_factory
         # block_detector is swappable: default instance uses the
         # builtin URL/HTML rules; callers can inject a subclass with
         # extra_checks() to add new detection paths without touching
@@ -118,8 +128,20 @@ class InstaLogin:
 
     def _default_challenge_chain(self) -> ChallengeResolverChain:
         """Factory for the builtin chain. Override in subclass or pass
-        a custom chain via constructor to add resolvers."""
+        a custom chain via constructor to add resolvers.
+
+        Order matters — chain iterates top-down each pass, so put
+        URL-specific resolvers BEFORE DOM-only ones to avoid heading
+        collisions between flows that share text:
+          - BloksCodeEntryResolver (URL: /auth_platform/codeentry/)
+          - EmailChallengeResolver (heading 'Check your email')
+        """
         return ChallengeResolverChain([
+            BloksCodeEntryResolver(
+                imap_config=self._imap_config,
+                timeout=self.timeout,
+                diagnostics=getattr(self, "_diagnostics", None),
+            ),
             EmailChallengeResolver(
                 selector_loader=self.selectors,
                 imap_config=self._imap_config,
@@ -141,6 +163,25 @@ class InstaLogin:
         return None
 
     def init_driver(self, headless):
+        # Injection point: caller passou um factory (ex.: webdriver.Remote
+        # apontando pra Bright Data ou Browserless). Pula todo o setup
+        # local de Firefox/GeckoDriver e usa o driver devolvido.
+        if getattr(self, '_webdriver_factory', None) is not None:
+            logger.info("InstaLogin: using injected webdriver_factory")
+            driver = self._webdriver_factory(headless)
+            try:
+                driver.set_window_size(375, 667)
+            except WebDriverException:
+                logger.debug("set_window_size failed on injected driver (ignored)")
+            try:
+                driver.execute_script(
+                    "Object.defineProperty(navigator, 'webdriver', "
+                    "{get: () => undefined})"
+                )
+            except WebDriverException:
+                logger.debug("webdriver flag removal failed on injected driver (ignored)")
+            return driver
+
         logger.debug("Setting up Firefox options with mobile user agent")
         options = webdriver.FirefoxOptions()
         mobile_user_agent = (

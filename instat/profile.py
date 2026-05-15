@@ -103,6 +103,18 @@ class Profile:
         """Variante async de get_following (asyncio.to_thread wrapper)."""
         return await asyncio.to_thread(self.get_following, **kwargs)
 
+    def get_recent_posts(self, limit: int = 5) -> list:
+        """Retorna PostMetrics dos últimos `limit` posts do perfil.
+
+        Delega ao InstaExtractor; ver lá para constraints de engine
+        (httpx requerido na cascade)."""
+        ext = self._require_extractor()
+        return ext.get_recent_posts(self.username, limit=limit)
+
+    async def aget_recent_posts(self, limit: int = 5) -> list:
+        """Variante async de get_recent_posts."""
+        return await asyncio.to_thread(self.get_recent_posts, limit)
+
 
 def _parse_shorthand_count(text: str) -> Optional[int]:
     """Parse '1,894' / '1.9K' / '2M' para int. Retorna None se falhar."""

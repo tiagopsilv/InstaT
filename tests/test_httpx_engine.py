@@ -272,5 +272,121 @@ class TestHttpxEngineTotalCount(unittest.TestCase):
         self.assertIsNone(e.get_total_count('u', 'followers'))
 
 
+class TestHttpxEngineGetRecentPosts(unittest.TestCase):
+    """get_recent_posts paginates /feed/user/{user_id}/ — covers
+    happy path, partial pages, and error mapping."""
+
+    def _engine_logged_in(self, user_id_response):
+        """Spin up an engine with mocked client + user_id resolver."""
+        e = HttpxEngine()
+        e._client = MagicMock()
+        # First call inside _resolve_user_id → return user info
+        # We patch _resolve_user_id directly to skip that round trip.
+        e._resolve_user_id = MagicMock(return_value=user_id_response)
+        return e
+
+    def _api_item(self, code, likes=10, comments=2, taken_at=1716220800):
+        return {
+            'code': code,
+            'like_count': likes,
+            'comment_count': comments,
+            'taken_at': taken_at,
+            'caption': {'text': f'caption {code} #tag'},
+            'media_type': 1,
+            'image_versions2': {
+                'candidates': [{'url': f'https://x/img_{code}.jpg'}]
+            },
+        }
+
+    def test_returns_requested_count(self):
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(json_body={
+            'items': [self._api_item(f'p{i}') for i in range(10)],
+            'next_max_id': None,
+            'more_available': False,
+        })
+        out = e.get_recent_posts('user', limit=5)
+        self.assertEqual(len(out), 5)
+        self.assertEqual([p.shortcode for p in out],
+                         ['p0', 'p1', 'p2', 'p3', 'p4'])
+
+    def test_paginates_to_reach_limit(self):
+        e = self._engine_logged_in('123')
+        # First page: 3 items + next_max_id. Second page: 4 items.
+        e._client.get.side_effect = [
+            make_response(json_body={
+                'items': [self._api_item(f'p{i}') for i in range(3)],
+                'next_max_id': 'cursor1',
+                'more_available': True,
+            }),
+            make_response(json_body={
+                'items': [self._api_item(f'q{i}') for i in range(4)],
+                'next_max_id': None,
+                'more_available': False,
+            }),
+        ]
+        out = e.get_recent_posts('user', limit=5)
+        self.assertEqual(len(out), 5)
+        # 3 from first page + first 2 from second.
+        self.assertEqual(
+            [p.shortcode for p in out],
+            ['p0', 'p1', 'p2', 'q0', 'q1'],
+        )
+
+    def test_short_feed_returns_partial(self):
+        # Profile with only 2 posts; limit=5 must not loop forever.
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(json_body={
+            'items': [self._api_item('p0'), self._api_item('p1')],
+            'next_max_id': None,
+            'more_available': False,
+        })
+        out = e.get_recent_posts('user', limit=5)
+        self.assertEqual(len(out), 2)
+
+    def test_invalid_limit_raises(self):
+        e = HttpxEngine()
+        with self.assertRaises(ValueError):
+            e.get_recent_posts('user', limit=0)
+
+    def test_not_logged_in_raises_blocked(self):
+        e = HttpxEngine()
+        e._client = None
+        with self.assertRaises(BlockedError):
+            e.get_recent_posts('user', limit=5)
+
+    def test_429_raises_rate_limit(self):
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(status_code=429)
+        with self.assertRaises(RateLimitError):
+            e.get_recent_posts('user', limit=5)
+
+    def test_404_raises_profile_not_found(self):
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(status_code=404)
+        with self.assertRaises(ProfileNotFoundError):
+            e.get_recent_posts('user', limit=5)
+
+    def test_403_raises_blocked(self):
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(status_code=403)
+        with self.assertRaises(BlockedError):
+            e.get_recent_posts('user', limit=5)
+
+    def test_malformed_post_item_skipped(self):
+        # Item missing 'code' is dropped silently — robustness over strict.
+        e = self._engine_logged_in('123')
+        e._client.get.return_value = make_response(json_body={
+            'items': [
+                {'like_count': 5},  # no code → skipped
+                self._api_item('good'),
+            ],
+            'next_max_id': None,
+            'more_available': False,
+        })
+        out = e.get_recent_posts('user', limit=5)
+        self.assertEqual([p.shortcode for p in out], ['good'])
+
+
 if __name__ == "__main__":
     unittest.main()
