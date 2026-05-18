@@ -81,13 +81,19 @@ class InstaLogin:
     def __init__(self, username, password, headless=True, timeout=10,
                  session_cache=None, base_url=None, imap_config=None,
                  block_detector=None, challenge_chain=None,
-                 diagnostics=None, webdriver_factory=None):
+                 diagnostics=None, webdriver_factory=None,
+                 stealth_mode='firefox'):
         """
         webdriver_factory: callable opcional que recebe `headless` e
           devolve um selenium WebDriver pronto. Quando fornecido, pula
           o setup de Firefox local (GeckoDriver) e usa o driver
           devolvido — habilita injeção de webdriver.Remote para Bright
           Data Scraping Browser, Browserless ou Selenium Grid.
+        stealth_mode: 'firefox' (default, GeckoDriver + Firefox local)
+          ou 'undetected_chrome' (undetected-chromedriver — remove
+          assinaturas de bot detectáveis pelo IG). 'undetected_chrome'
+          requer `pip install instat[stealth]` + Chrome local. Ignorado
+          se `webdriver_factory` fornecido.
         """
         self.username = username
         self.password = password
@@ -96,6 +102,7 @@ class InstaLogin:
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
         self._imap_config = imap_config
         self._webdriver_factory = webdriver_factory
+        self._stealth_mode = stealth_mode
         # block_detector is swappable: default instance uses the
         # builtin URL/HTML rules; callers can inject a subclass with
         # extra_checks() to add new detection paths without touching
@@ -162,6 +169,68 @@ class InstaLogin:
                 return str(exe)
         return None
 
+    def _init_undetected_chrome(self, headless):
+        """Chrome via undetected-chromedriver — opt-in alternative to
+        Firefox+Gecko. The library patches Selenium's webdriver to
+        remove the bot signatures IG actively probes:
+
+          - navigator.webdriver flag (= undefined instead of true)
+          - plugins / languages array shape
+          - chrome-runtime properties
+          - permissions API quirks
+
+        Empirically more resistant than `playwright-stealth` (which
+        only patches a subset and has API churn). Trade-offs:
+          - Requires Chrome installed locally (we don't ship it)
+          - Optional dep: `pip install instat[stealth]` for the
+            `undetected_chromedriver` package
+          - More verbose first-launch (uc downloads matching
+            chromedriver if not cached)
+
+        Mobile UA + 375x667 window size match the Firefox path so the
+        rest of InstaT's selectors (which target IG mobile DOM) work
+        unchanged.
+        """
+        try:
+            import undetected_chromedriver as uc
+        except ImportError as e:
+            raise RuntimeError(
+                "stealth_mode='undetected_chrome' requires "
+                "undetected-chromedriver. Install with: "
+                "`pip install instat[stealth]`"
+            ) from e
+        logger.debug("Setting up undetected Chrome options")
+        options = uc.ChromeOptions()
+        mobile_user_agent = (
+            "Mozilla/5.0 (Linux; Android 8.0; Nexus 5 Build/OPR6.170623.013) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36"
+        )
+        options.add_argument(f"--user-agent={mobile_user_agent}")
+        # Mobile-sized viewport matches InstaT's mobile selector set.
+        options.add_argument("--window-size=375,667")
+        # Block images for bandwidth (matches Firefox preference path).
+        prefs = {"profile.managed_default_content_settings.images": 2}
+        options.add_experimental_option("prefs", prefs)
+        if headless:
+            logger.debug("Enabling headless mode (undetected_chrome)")
+            # uc's 'new' headless avoids the older mode's detection
+            # heuristics; supported from chromedriver 109+.
+            options.add_argument("--headless=new")
+        try:
+            driver = uc.Chrome(options=options, headless=headless)
+        except Exception as e:
+            logger.exception(
+                "Error initializing undetected Chrome WebDriver"
+            )
+            raise Exception(
+                "Failed to initialize undetected Chrome WebDriver."
+            ) from e
+        try:
+            driver.set_window_size(375, 667)
+        except WebDriverException:
+            logger.debug("set_window_size failed on uc driver (ignored)")
+        return driver
+
     def init_driver(self, headless):
         # Injection point: caller passou um factory (ex.: webdriver.Remote
         # apontando pra Bright Data ou Browserless). Pula todo o setup
@@ -181,6 +250,13 @@ class InstaLogin:
             except WebDriverException:
                 logger.debug("webdriver flag removal failed on injected driver (ignored)")
             return driver
+
+        # Stealth-mode branch: undetected-chromedriver removes the bot
+        # signatures (navigator.webdriver, plugins, languages mismatch,
+        # etc.) that IG actively detects in vanilla Selenium. Opt-in
+        # via stealth_mode='undetected_chrome' on SeleniumEngine.
+        if getattr(self, '_stealth_mode', 'firefox') == 'undetected_chrome':
+            return self._init_undetected_chrome(headless)
 
         logger.debug("Setting up Firefox options with mobile user agent")
         options = webdriver.FirefoxOptions()

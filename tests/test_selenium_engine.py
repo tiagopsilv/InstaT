@@ -43,6 +43,34 @@ class TestSeleniumEngine(unittest.TestCase):
         engine._driver = None
         engine.quit()  # should not raise
 
+    def test_invalid_stealth_mode_raises(self):
+        with self.assertRaises(ValueError):
+            SeleniumEngine(stealth_mode='bogus')
+
+    @patch('instat.engines.selenium_engine.InstaLogin')
+    def test_stealth_mode_propagated_to_login(self, MockLogin):
+        mock_instance = MockLogin.return_value
+        mock_instance.driver = MagicMock()
+        mock_instance.login.return_value = True
+
+        engine = SeleniumEngine(stealth_mode='undetected_chrome')
+        engine.login('u', 'p')
+
+        kwargs = MockLogin.call_args.kwargs
+        self.assertEqual(kwargs.get('stealth_mode'), 'undetected_chrome')
+
+    @patch('instat.engines.selenium_engine.InstaLogin')
+    def test_default_stealth_mode_is_firefox(self, MockLogin):
+        mock_instance = MockLogin.return_value
+        mock_instance.driver = MagicMock()
+        mock_instance.login.return_value = True
+
+        engine = SeleniumEngine()
+        engine.login('u', 'p')
+
+        kwargs = MockLogin.call_args.kwargs
+        self.assertEqual(kwargs.get('stealth_mode'), 'firefox')
+
     @patch('instat.engines.selenium_engine.InstaLogin')
     def test_webdriver_factory_propagated_to_login(self, MockLogin):
         mock_instance = MockLogin.return_value

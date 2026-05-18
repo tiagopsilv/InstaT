@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-590%20passing-brightgreen.svg)](tests/)
 
 Production-grade Python library for Instagram follower/following extraction, built on a **multi-engine architecture** with automatic fallback, session persistence, and parallel orchestration.
 
@@ -29,24 +29,31 @@ Production-grade Python library for Instagram follower/following extraction, bui
 | Capability | What it does |
 |---|---|
 | **Multi-engine** | Selenium (primary) → Playwright → httpx, orchestrated by `EngineManager` with automatic cascade on failure |
+| **Remote browsers** | Plug Bright Data Scraping Browser / Browserless / Selenium Grid via `engines=[...]` dependency injection — no extraction-logic changes |
+| **Stealth modes** | Firefox + GeckoDriver (default) or `stealth_mode='undetected_chrome'` via `undetected-chromedriver` for stronger bot-signature evasion |
 | **Parallel extraction** | Run N browsers concurrently on the same target; shared set + stop-on-target coordinator |
 | **Account & proxy rotation** | `SessionPool` and `ProxyPool` with cooldown backoff on rate-limit/block |
+| **Challenge auto-resolve** | IMAP-driven `EmailChallengeResolver` + URL-driven `BloksCodeEntryResolver` handle IG's multi-step verification flows via an iterative chain |
 | **Resilience** | Incremental checkpoints, session-cookie cache, smart exponential backoff, stall recovery via modal reopen |
-| **Observability** | Structured Loguru logs, artifact capture on blocks (screenshot + HTML) |
+| **Post metrics** | `get_recent_posts()` returns `PostMetrics` (likes/comments/timestamp/caption/hashtags) — feeds engagement formulas like TEP without extra scraping |
+| **Rich metadata** | `get_followers(with_metadata=True)` returns `ProfileSummary` with `user_id`, `full_name`, `is_verified` etc. — stable keys for SNA / graph analysis |
+| **Audit telemetry** | `get_followers_with_metrics()` returns `ExtractionResult` with `engine_used`, `coverage_pct`, `duration_seconds`, `rate_limit_hits` — ready for BigQuery audit logs |
+| **Observability** | Structured Loguru logs (or stdlib via `use_stdlib_logging=True`), `DiagnosticCollector` bundles (screenshot + HTML + cookies + metadata) on every failure |
 | **Export** | CSV, JSON, SQLite out of the box; pluggable `BaseExporter` for custom sinks |
 | **Async** | `AsyncInstaExtractor` wraps the sync API for concurrent `profile_id` pipelines |
 | **CLI & Docker** | `instat` binary, pre-built Dockerfile + compose manifest |
-| **Typed & tested** | 243 unit tests, ruff + mypy in CI |
+| **Typed & tested** | 590 unit tests, ruff + mypy in CI |
 
 ---
 
 ## Installation
 
 ```bash
-pip install instat                         # core (Selenium only)
-pip install 'instat[playwright]'           # + Playwright engine
-pip install 'instat[httpx]'                # + httpx fallback engine
-pip install 'instat[playwright,httpx,dev]' # everything
+pip install instat                                  # core (Selenium / Firefox only)
+pip install 'instat[playwright]'                    # + Playwright engine
+pip install 'instat[httpx]'                         # + httpx fallback engine (recommended — post metrics + cookie handoff)
+pip install 'instat[stealth]'                       # + undetected-chromedriver (stealth_mode='undetected_chrome')
+pip install 'instat[playwright,httpx,stealth,dev]'  # everything
 ```
 
 **Requirements:** Python ≥ 3.9, Firefox (GeckoDriver auto-installed via `webdriver-manager`).

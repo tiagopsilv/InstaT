@@ -402,6 +402,73 @@ authenticated session — no separate login required.
 
 ---
 
+## Stealth via undetected-chromedriver
+
+InstaT's `SeleniumEngine` defaults to Firefox + GeckoDriver with
+`playwright-stealth`-style tweaks (just the `navigator.webdriver` flag
+removal). That covers the basics but IG's bot detection has since
+moved on — it probes plugin lists, languages array shape, the
+`chrome.runtime` namespace, permissions API quirks, etc.
+
+`stealth_mode='undetected_chrome'` swaps the local browser to Chrome
+via [`undetected-chromedriver`](https://github.com/ultrafunkamsterdam/undetected-chromedriver),
+which patches all of those vectors at the chromedriver level. Same
+InstaT API, just an opt-in flag.
+
+```python
+from instat import InstaExtractor
+from instat.engines.selenium_engine import SeleniumEngine
+
+uc_engine = SeleniumEngine(
+    headless=True, timeout=20,
+    stealth_mode='undetected_chrome',   # default is 'firefox'
+)
+
+ext = InstaExtractor(
+    user, pw,
+    engines=[uc_engine, 'httpx'],
+)
+```
+
+Or via the simpler path (when you don't need to combine with other
+engines yet, ride the default `engines=['selenium']` but pass through):
+
+```python
+# Pattern for the future once we surface stealth_mode on InstaExtractor;
+# for now, build the SeleniumEngine explicitly as above.
+```
+
+Requirements:
+
+- `pip install instat[stealth]` — adds the optional
+  `undetected-chromedriver>=3.5` dep.
+- **Chrome installed locally.** undetected-chromedriver downloads a
+  matching chromedriver on first launch and points at your local
+  Chrome binary; we don't ship the browser.
+- Linux containers: install `google-chrome-stable` from Google's apt
+  repo before running.
+
+When to prefer `undetected_chrome`:
+
+- Account is fresh / barely-warmed and IG block-rate is high.
+- You're already paying for residential / mobile proxies and want to
+  squeeze maximum sessions per account.
+- Selenium scroll loop hits modal-stale or 429 frequently and
+  swapping the proxy didn't fix it.
+
+When to stick with Firefox (default):
+
+- You don't want a Chrome dependency.
+- Your account pool is well-warmed and Firefox works fine.
+- You're running inside a container where adding Chrome inflates
+  image size significantly.
+
+Note: `webdriver_factory` (for remote browsers) takes precedence —
+if both `webdriver_factory` and `stealth_mode='undetected_chrome'`
+are set, the factory wins and stealth_mode is ignored.
+
+---
+
 ## Bright Data Scraping Browser (PUBLIC content only)
 
 > **Policy update (2026-05-15, per BD support guidance):** Bright Data

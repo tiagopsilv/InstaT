@@ -128,6 +128,69 @@ class TestInstaLogin(unittest.TestCase):
         result = self.client.login()
         self.assertTrue(result)
 
+class TestInstaLoginStealthMode(unittest.TestCase):
+    """stealth_mode='undetected_chrome' routes init_driver through the
+    undetected_chromedriver path instead of Firefox+Gecko. Pin the
+    branch + the import-error guard."""
+
+    def test_stealth_mode_undetected_chrome_uses_uc(self):
+        import sys
+        # Build a fake undetected_chromedriver module so the import
+        # inside _init_undetected_chrome resolves.
+        fake_uc = MagicMock()
+        fake_driver = MagicMock(name='uc_driver')
+        fake_uc.Chrome.return_value = fake_driver
+        fake_uc.ChromeOptions.return_value = MagicMock()
+
+        with patch.dict(sys.modules, {'undetected_chromedriver': fake_uc}), \
+             patch("instat.login.SelectorLoader") as mock_loader_class:
+            mock_loader_class.return_value = MagicMock()
+            client = InstaLogin(
+                "u", "p", headless=True,
+                stealth_mode='undetected_chrome',
+            )
+
+        self.assertIs(client.driver, fake_driver)
+        fake_uc.Chrome.assert_called_once()
+        # Ensure mobile UA was set via ChromeOptions.add_argument.
+        opts = fake_uc.ChromeOptions.return_value
+        ua_calls = [c for c in opts.add_argument.call_args_list
+                    if 'user-agent' in str(c).lower()]
+        self.assertTrue(ua_calls, "mobile UA should be set on ChromeOptions")
+
+    def test_stealth_mode_undetected_chrome_missing_dep_raises(self):
+        import sys
+        # Simulate undetected_chromedriver not installed.
+        original = sys.modules.pop('undetected_chromedriver', None)
+        sys.modules['undetected_chromedriver'] = None
+        try:
+            with patch("instat.login.SelectorLoader") as mock_loader_class:
+                mock_loader_class.return_value = MagicMock()
+                with self.assertRaises(RuntimeError) as ctx:
+                    InstaLogin(
+                        "u", "p", headless=True,
+                        stealth_mode='undetected_chrome',
+                    )
+            self.assertIn("instat[stealth]", str(ctx.exception))
+        finally:
+            if original is None:
+                sys.modules.pop('undetected_chromedriver', None)
+            else:
+                sys.modules['undetected_chromedriver'] = original
+
+    def test_default_stealth_mode_uses_firefox_path(self):
+        # Default behaviour preserved: Firefox branch still wins when
+        # stealth_mode is unset.
+        with patch("instat.login.SelectorLoader") as mock_loader_class:
+            mock_loader_class.return_value = MagicMock()
+            with patch("instat.login.webdriver.Firefox") as mock_firefox:
+                fake_ff = MagicMock(name='ff_driver')
+                mock_firefox.return_value = fake_ff
+                client = InstaLogin("u", "p", headless=True)
+        self.assertIs(client.driver, fake_ff)
+        mock_firefox.assert_called_once()
+
+
 class TestInstaLoginWebdriverFactory(unittest.TestCase):
     """init_driver should bypass Firefox setup when a webdriver_factory
     is injected — used for remote browsers (Bright Data, Browserless,

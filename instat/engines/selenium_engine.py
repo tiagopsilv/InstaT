@@ -61,6 +61,7 @@ class SeleniumEngine(BaseEngine):
                  proxy: Optional[str] = None, base_url: Optional[str] = None,
                  imap_config=None,
                  webdriver_factory: Optional[Callable[[bool], object]] = None,
+                 stealth_mode: str = 'firefox',
                  **kwargs):
         """
         webdriver_factory: callable que recebe `headless` e devolve um
@@ -69,7 +70,18 @@ class SeleniumEngine(BaseEngine):
           drivers remotos (webdriver.Remote contra Bright Data,
           Browserless ou Selenium Grid). InstaLogin reusa o driver
           devolvido para todo o fluxo de login + extração.
+        stealth_mode: 'firefox' (default, comportamento legado com
+          Firefox + GeckoDriver + mobile UA) ou 'undetected_chrome'
+          (Chrome via undetected-chromedriver — remove assinaturas de
+          bot que IG detecta no padrão Selenium). Requer
+          `pip install instat[stealth]` e Chrome instalado localmente.
+          Ignorado se `webdriver_factory` fornecido (factory ganha).
         """
+        if stealth_mode not in ('firefox', 'undetected_chrome'):
+            raise ValueError(
+                f"stealth_mode must be 'firefox' or 'undetected_chrome', "
+                f"got {stealth_mode!r}"
+            )
         self.headless = headless
         self.timeout = timeout
         self._login_class = _login_class or InstaLogin
@@ -77,6 +89,7 @@ class SeleniumEngine(BaseEngine):
         self._base_url = base_url or self.INSTAGRAM_BASE_URL
         self._imap_config = imap_config
         self._webdriver_factory = webdriver_factory
+        self._stealth_mode = stealth_mode
         self._login_obj = None
         self._driver = None
         self._modal: Optional[ModalInteraction] = None  # built lazily post-login
@@ -114,6 +127,7 @@ class SeleniumEngine(BaseEngine):
             base_url=self._base_url,
             imap_config=self._imap_config,
             webdriver_factory=self._webdriver_factory,
+            stealth_mode=self._stealth_mode,
         )
         self._login_obj.login()
         self._driver = self._login_obj.driver
