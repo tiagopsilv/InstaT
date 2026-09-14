@@ -3,7 +3,7 @@
 > **Objetivo:** fazer o InstaT (hoje Selenium, Playwright e httpx, com identidade *desktop web*) se apresentar ao Instagram como **um celular Android real**. O plano usa um aparelho emulado em Docker, proxy móvel DataImpulse, identidade de device coerente, TLS igual ao do app, comportamento humano, aquecimento de sessão e limite de requisições adaptativo.
 >
 > **Documento vivo.** Ao terminar, toda fase atualiza o [Histórico](#7-histórico-de-fases) e a pasta de evidências.
-> v1 em 14/09/2026 · v2 em 14/09/2026 (pesquisa aprofundada, critérios de aceite, gates e template de fase) · **v3 em 14/09/2026** (correções da pesquisa: certificate pinning, tradução ARM no redroid, `sessttl` da DataImpulse, curl_cffi sem perfil OkHttp, ritmo de leitura medido pela comunidade, mapa refeito sobre as classes reais do InstaT — ver [Correções da v3](#correções-da-v3)) · **v4 em 14/09/2026** (contrato público imutável em [§3.1](#31-contrato-público-imutável): o mobile é opt-in via novos nomes de engine e a API atual não muda) · **v5 em 14/09/2026** (assinatura `signed_body`/`ig_sig_key_version`, limites reais do GramAddict, modo de GPU do redroid, custo ~US$2/GB da DataImpulse).
+> v1 em 14/09/2026 · v2 em 14/09/2026 (pesquisa aprofundada, critérios de aceite, gates e template de fase) · **v3 em 14/09/2026** (correções da pesquisa: certificate pinning, tradução ARM no redroid, `sessttl` da DataImpulse, curl_cffi sem perfil OkHttp, ritmo de leitura medido pela comunidade, mapa refeito sobre as classes reais do InstaT — ver [Correções da v3](#correções-da-v3)) · **v4 em 14/09/2026** (contrato público imutável em [§3.1](#31-contrato-público-imutável): o mobile é opt-in via novos nomes de engine e a API atual não muda) · **v5 em 14/09/2026** (assinatura `signed_body`/`ig_sig_key_version`, limites reais do GramAddict, modo de GPU do redroid, custo ~US$2/GB da DataImpulse) · **v6 em 14/09/2026** (dor atual: [§1.9](#19-o-gargalo-real-hoje-login-travando-e-sem-paralelismo-resiliente) + [Fase 11 prioritária](#fase-11--paralelismo-resiliente-multi-conta--prioridade): sessão persistente sem re-login, AccountPool com failover e resume por cursor).
 
 ### Correções da v3
 | O que a v2 dizia | O que a pesquisa mostrou | Onde mudou |
@@ -159,29 +159,58 @@ Toda fase segue **os 7 passos, na ordem, sem exceção**. Nenhum passo é pulado
 - **Política do provedor:** a Bright Data proíbe login automatizado no IG (já registrado no CHANGELOG). **A política da DataImpulse precisa ser verificada na Fase 0.**
 - Onde houver cobertura, **preferir a Graph API oficial** (contas Business/Creator próprias).
 
+### 1.9 O gargalo real hoje: login travando e sem paralelismo resiliente
+
+**Problema medido (relato do Tiago, 14/09/2026):** o processo é lento e "cai toda hora"; o Instagram **trava o login**; não há paralelismo de verdade; e quando uma conta cai, o trabalho feito se perde em vez de outra conta **assumir de onde parou**.
+
+**Causa-raiz (pesquisa):** o InstaT hoje **loga do zero a cada execução**. Cada login novo é o evento mais arriscado — o IG vê "novo device" e dispara challenge/checkpoint ([instagrapi best practices](https://subzeroid.github.io/instagrapi/usage-guide/best-practices.html), [login_required](https://instagrapi.com/guides/errors/login-required)). As regras de ouro da comunidade:
+- **Não logar toda vez.** Logar **uma vez**, salvar a sessão (`dump_settings`) e **reusar** (`load_settings` **antes** de qualquer login, senão os device IDs são regenerados e perde-se o efeito).
+- **Recuperar com `relogin()`, não `login()`.** `login()` descarta o fingerprint e refaz o handshake (→ challenge). `relogin()` reusa o fingerprint e só renova o cookie jar.
+- **Sessão + proxy fixo + execução serial *por conta*** derruba a taxa de challenge. O paralelismo vem de **muitas contas em paralelo**, cada uma serial e com IP próprio — nunca uma conta em rajada.
+- Persistência: arquivo para scripts, **Redis/SQLite para frota**, mesma dupla `dump/load` por baixo ([session persistence](https://instagrapi.com/guides/instagrapi-session-persistence)).
+
+**Failover "assumir de onde parou" (pesquisa):** o padrão certo é **checkpoint de cursor**, não de resultado. A API privada pagina por `next_max_id` (`user_followers_v1_chunk(user_id, max_id=<cursor>)` devolve a página **+** o próximo cursor) ([instagrapi user.md](https://github.com/subzeroid/instagrapi/blob/master/docs/usage-guide/user.md), [followers guide](https://instagrapi.com/guides/get-instagram-followers-python/)). Persistindo o cursor por `(alvo, list_type)`, quando a conta A é bloqueada a conta B **retoma exatamente na página seguinte** — sem recomeçar. ⚠️ Isso só é exato na **API** (`MobileApiEngine`, Fase 5): o scroll do Selenium é **posicional** e não exporta cursor, então lá o resume é aproximado (retomar por delta do conjunto já coletado, via `PersistentStore.get_delta_since`).
+
+**Modelo de pool de contas (referência: [twscrape](https://github.com/vladkens/twscrape)):** contas num store (SQLite), **estado por conta** (`active` / `cooling` / `blocked` / `challenge` / `logged_out`), **lock por conta e por endpoint** (quando limitada para uma operação, trava só aquela operação até o reset e **tenta outra conta ativa**), `wait_timeout`/`wait_interval` para esperar a próxima conta liberar, e liberação imediata do lock ao interromper cedo. Reclaim estilo fila (visibility timeout, [Redis job queue](https://redis.io/docs/latest/develop/use-cases/job-queue/), [Celery `task_acks_late`/`task_reject_on_worker_lost`](https://dev.to/artemooon/celery-redis-at-scale-designing-a-reliable-and-efficient-task-queue-in-production-27nh)): a fatia de uma conta que caiu volta para a fila e outra pega. Para uma ferramenta de host único, uma **tabela de claims em SQLite** com timeout basta — sem precisar de Celery/Redis.
+
+**O que o InstaT já tem** (reaproveitar, não reinventar): `ParallelCoordinator` (união + `stop_threshold`), `parallel_extract`/`_parallel_extract_with_pool`, `get_followers_parallel`/`get_following_parallel`, `get_followers_persistent` (`_extract_persistent` com fallback de contas e retries), `ExtractionCheckpoint` (salva **Set**), `PersistentStore.get_delta_since`, `SessionPool.mark_blocked` (cooldown), `WorkerPool` (workers pré-logados), `SessionCache`. **Faltam:** (a) persistência real de sessão que **evita o re-login**; (b) o **AccountPool scheduler** com estados+locks; (c) checkpoint de **cursor** (não só de Set) para failover exato. Isso é a Fase 11.
+
 ---
 
 ## 2. Arquitetura alvo
 
 ```
-                        ┌──────────────── host Linux (VPS ou WSL2 kernel custom) ────────────────┐
-                        │                                                                        │
- InstaExtractor ──► EngineManager (cascata)                                                     │
-                        │   1. MobileApiEngine  (curl_cffi, TLS=app, headers=DeviceProfile)      │
-                        │   2. AndroidUiEngine  (uiautomator2 → container Android)               │
-                        │   3. engines web atuais (httpx / Playwright / Selenium)                │
-                        │                                                                        │
-                        │   RateGovernor ◄── block_predictor / backoff / block_detector          │
-                        │   AccountSlot = {conta, DeviceProfile, sessão, porta sticky, warmth}   │
-                        │                                                                        │
-                        │  ┌─ compose: slot-01 ───────────────────────────────┐                  │
-                        │  │ android (redroid|budtmo) ◄─adb─ controller (py)   │                  │
-                        │  │ netns ─► tun2socks ─► gw.dataimpulse.com:1xxxx    │                  │
-                        │  └───────────────────────────────────────────────────┘                  │
-                        └────────────────────────────────────────────────────────────────────────┘
+ InstaExtractor
+      │
+      ▼
+ AccountPool (scheduler)  ── estados: active/cooling/blocked/challenge/logged_out
+      │   • pick_next(endpoint): conta ativa cujo lock (conta+endpoint) está livre
+      │   • lock por conta E por endpoint; espera wait_timeout/wait_interval
+      │   • SessionStore: load_settings ANTES de login; relogin() (nunca login do zero)
+      │   • bloqueio/challenge → mark + cooldown → devolve a fatia à fila
+      ▼
+ WorkQueue (SQLite claims + visibility timeout)   CursorStore: {(alvo,list_type) → next_max_id}
+      │   fatia reivindicada por 1 conta; se cai, timeout → outra conta reivindica
+      ▼
+ EngineManager (cascata, por conta/slot)
+      │   1. MobileApiEngine  (curl_cffi, TLS=app) ── EXPORTA next_max_id → failover exato
+      │   2. AndroidUiEngine  (uiautomator2 → container) ── resume aproximado (delta)
+      │   3. engines web atuais (httpx / Playwright / Selenium)
+      │
+      │   RateGovernor ◄── block_predictor / backoff / block_detector
+      ▼
+ N slots em paralelo (1 conta cada) ── host Linux (VPS ou WSL2 kernel custom)
+   ┌─ slot-01 ─────────────────────────────────────┐   ┌─ slot-02 ─┐   ┌─ … ─┐
+   │ AccountSlot = {conta, DeviceProfile, sessão,   │   │  (idem)   │   │     │
+   │   porta sticky, warmth}                        │   └───────────┘   └─────┘
+   │ android (redroid|budtmo) ◄─adb─ controller(py) │
+   │ netns ─► tun2socks ─► gw.dataimpulse.com:1xxxx │
+   └────────────────────────────────────────────────┘
 ```
 
 **Invariante central:** `1 conta = 1 DeviceProfile = 1 container/volume = 1 porta sticky DataImpulse (país/ASN fixo) = 1 RateGovernor`. Nada é compartilhado entre slots.
+
+**Fluxo do failover ("outro assume de onde parou"):** cada conta processa uma fatia paginada; a cada página grava `next_max_id` no `CursorStore` e os perfis no `PersistentStore` (união, dedupe por `pk`). Se a conta cai (bloqueio/challenge/queda), o `AccountPool` a coloca em cooldown e a fatia volta à `WorkQueue`; a próxima conta ativa reivindica e **retoma pelo cursor salvo** — na API, na página exata; no Selenium, pelo delta do conjunto. O paralelismo é **entre contas**; cada conta é **serial** e nunca faz rajada.
 
 ---
 
@@ -246,6 +275,8 @@ ext.quit()
 
 > Formato: cada fase lista os **7 passos** + **critérios de aceite** + **caminho do print** (definido no passo 3).
 > Marcadores de teste: `mobile` (precisa de container Android), `e2e` (fake server). O CI roda `-m "not e2e and not mobile"`.
+>
+> **⏫ Ordem recomendada:** Fase 0 → **Fase 11 (prioridade — resolve a dor atual: login travando e sem paralelismo)** → Fase 1 → … A Fase 11 tem duas camadas: a **Camada 1** (sessão persistente + AccountPool) **não precisa do container Android** e pode entregar valor já; a **Camada 2** (failover por cursor exato) fecha junto com o `MobileApiEngine` (Fase 5).
 
 ---
 
@@ -391,6 +422,41 @@ ext.quit()
 
 ---
 
+### Fase 11 — Paralelismo resiliente multi-conta ⏫ PRIORIDADE
+
+> **Resolve a dor atual** (§1.9): login travando, processo lento, "cai toda hora", sem paralelismo, e trabalho perdido quando uma conta cai. Roda **logo após a Fase 0**. Duas camadas: a **Camada 1 não precisa do container Android**; a **Camada 2** (cursor exato) fecha com o `MobileApiEngine` (Fase 5).
+
+#### Camada 1 — Sessão persistente + AccountPool (sem container)
+
+1. **Análise:** medir hoje, com os engines atuais: quantas execuções **relogam do zero**, quantos challenges vêm **do login** (vs. da extração), tempo médio perdido por login travado e quanto trabalho se perde quando uma conta cai no meio.
+2. **Pesquisa:** `dump_settings`/`load_settings` e `relogin()` vs `login()` ([best practices](https://subzeroid.github.io/instagrapi/usage-guide/best-practices.html), [login_required](https://instagrapi.com/guides/errors/login-required)); persistência de sessão (arquivo/SQLite/Redis, [guia](https://instagrapi.com/guides/instagrapi-session-persistence)); pool de contas com estado+lock ([twscrape](https://github.com/vladkens/twscrape)); reclaim por visibility timeout ([Redis job queue](https://redis.io/docs/latest/develop/use-cases/job-queue/), [Celery acks_late](https://dev.to/artemooon/celery-redis-at-scale-designing-a-reliable-and-efficient-task-queue-in-production-27nh)).
+3. **Pré-análise:**
+   - `SessionStore` (evolui `session_cache.py`): salva **cookies + IDs de device juntos** por conta em SQLite; **carrega antes** de qualquer login; expõe `relogin_needed()`.
+   - `AccountPool` (envolve `SessionPool`): estados `active/cooling/blocked/challenge/logged_out`; `acquire(endpoint)` devolve conta ativa com lock **por conta e por endpoint** livre, senão espera (`wait_timeout`/`wait_interval`) ou levanta `NoAccountError`; `release()` sempre (inclusive em interrupção); bloqueio/challenge → `mark_*` + cooldown.
+   - `WorkQueue` (SQLite): a lista-alvo vira fatias; cada fatia é **reivindicada** por uma conta com **visibility timeout**; conta que cai → a fatia expira e outra reivindica. Sem Celery/Redis (host único).
+   - **Contrato público intacto** (§3.1): tudo isso é **opt-in** por parâmetros novos com default; `get_followers()`/`get_following()` seguem iguais. O caminho paralelo já existe (`get_followers_parallel`) e ganha o pool por baixo.
+   - **Caminho do print:** rodar N contas de teste contra 1 alvo; sem tocar produção além das próprias contas de teste (aval já dado para elas).
+4. **TDD** (rede mockada, relógio falso): `load_settings` roda antes de `login`; recuperação usa `relogin`, nunca `login`; conta bloqueada sai do pool e outra assume; lock por endpoint não trava outros endpoints; `WorkQueue` reivindica de novo uma fatia expirada; interrupção libera o lock; união dedup por `pk`.
+5. **Execução.**
+6. **Testes:** unit + um teste de integração simulando "conta A cai na fatia 2 → conta B termina a fatia 2".
+7. **Prints:** painel do pool (estados por conta, PNG), linha do tempo de uma corrida com uma queda e o failover, gráfico "logins evitados vs. execuções". **Lidos um a um.**
+
+**Aceite Camada 1:** re-login por execução cai a ~0 quando há sessão salva; nenhuma conta em rajada; queda de uma conta **não perde** trabalho (outra retoma pelo delta); contrato público §3.1 verde.
+
+#### Camada 2 — Failover por cursor exato (com `MobileApiEngine`, depende da Fase 5)
+
+1. **Análise:** medir a perda do resume **aproximado** (Selenium/delta) vs. exato (cursor) — quantos perfis são re-scrolados à toa quando a conta troca.
+2. **Pesquisa:** paginação `next_max_id` / `user_followers_v1_chunk(user_id, max_id=cursor)` ([user.md](https://github.com/subzeroid/instagrapi/blob/master/docs/usage-guide/user.md), [followers guide](https://instagrapi.com/guides/get-instagram-followers-python/)); dedupe por `pk`; limites de crawl grande.
+3. **Pré-análise:** `CursorStore` (em `PersistentStore`) por `(alvo, list_type)`; o `MobileApiEngine` **exporta** `next_max_id` a cada página e **retoma** de um cursor dado; a `WorkQueue` passa a guardar o cursor na fatia. **Print:** log mostrando conta B continuando no cursor exato onde A parou.
+4. **TDD:** engine retoma da página exata de um cursor salvo; troca de conta no meio não repete nem pula perfis (dedupe por `pk`); cursor nulo encerra.
+5. **Execução.**
+6. **Testes.**
+7. **Prints:** `01-cursor-handoff`, `02-sem-reprocesso`, lidos.
+
+**Aceite Camada 2:** ao trocar de conta, o re-processamento de perfis já vistos é ~0 (contra o resume aproximado do Selenium).
+
+---
+
 ## 5. Mapa com o código existente
 
 > Levantado lendo as classes reais em 14/09/2026. Cada linha diz **o que existe hoje**, **a lacuna para o mobile** e **em que fase** ela é resolvida.
@@ -400,9 +466,11 @@ ext.quit()
 | `engines/base.py` · `BaseEngine` | `login`, `extract(profile_id, list_type, ...)`, `get_total_count`, `get_recent_posts`, `quit`, `name`, `is_available` | `MobileApiEngine` e `AndroidUiEngine` implementam o mesmo contrato e entram na cascata | 0, 5, 6 |
 | `engines/httpx_engine.py` · `HttpxEngine` | `login`, `login_with_cookies`, `extract`, `get_total_count`, `get_recent_posts`; usa httpx | Referência de endpoints/paginação/`on_batch`; transporte migra para `curl_cffi` e headers para o `HeaderFactory` | 3, 4, 5 |
 | `proxy.py` · `ProxyPool`/`ProxyState` | Round-robin (`get_next`) com cooldown por falha (`mark_failed`/`mark_success`) | Modelo **errado para conta logada** (rotação por falha). O sticky é classe nova (`StickyProxyPool`) que reusa só o health/cooldown e fixa `conta→porta+cr+asn+sessttl` | 2 |
-| `session_cache.py` · `SessionCache` | `save`/`load(max_age)`/`clear` de cookies por usuário | Vira `SessionStore` que guarda cookies **+ `DeviceProfile` + IDs** juntos (senão a sessão invalida) | 3, 5 |
-| `session_pool.py` · `SessionPool`/`Session` | Pool de sessões com `mark_blocked`/`mark_success`/`all_blocked` | Base do `AccountSlot` (conta+device+porta+warmth), sem compartilhar identidade entre slots | 0, 9 |
-| `persistent_store.py` · `PersistentStore` | `add_batch`/`get_all`/`get_delta_since`/`stats`/`source_breakdown` (SQLite) | Guarda `DeviceProfile`, nível de warming e cursor de checkpoint por conta | 3, 7 |
+| `session_cache.py` · `SessionCache` | `save`/`load(max_age)`/`clear` de cookies por usuário | Vira `SessionStore` que guarda cookies **+ `DeviceProfile` + IDs** juntos (senão a sessão invalida) e **evita o re-login** (`load` antes, `relogin`) | 3, 5, **11** |
+| `session_pool.py` · `SessionPool`/`Session` | Pool de sessões com `mark_blocked`/`mark_success`/`all_blocked` | Base do `AccountSlot` e do `AccountPool` (estados+locks por conta/endpoint) | 0, 9, **11** |
+| `parallel.py` · `ParallelCoordinator` / `parallel_extract` | União de sets + `stop_threshold`; N workers independentes | Passa a ser dirigido pelo `AccountPool` + `WorkQueue` (fatias reivindicáveis, failover) | **11** |
+| `checkpoint.py` · `ExtractionCheckpoint` | `save`/`load`/`clear` de um **Set** | Ganha o `CursorStore` (checkpoint de `next_max_id`) p/ failover exato | **11** |
+| `persistent_store.py` · `PersistentStore` | `add_batch`/`get_all`/`get_delta_since`/`stats`/`source_breakdown` (SQLite) | Guarda `DeviceProfile`, nível de warming, **cursor** e a `WorkQueue` de claims | 3, 7, **11** |
 | `block_predictor.py` · `BlockPredictor` | `record_request`/`record_stale`/`risk_score`/`should_cooldown(0.7)` | Alimenta o `RateGovernor`; ganha os sinais novos (429, `feedback_required`, challenge) | 8 |
 | `backoff.py` · `SmartBackoff` | `wait()`/`reset()` exponencial | Vira o componente AIMD do `RateGovernor` (corte ×0.5 em 429) | 8 |
 | `worker_pool.py` · `WorkerPool` | `add_worker`/`engines`/`clear` (hoje só `SeleniumEngine`) | Estendido para N `AccountSlot`s (device+conta+proxy), com health de container | 9 |
@@ -410,7 +478,7 @@ ext.quit()
 | `challenge_resolvers.py`, `email_code.py` | Cadeia de resolvers (email/Bloks) já existente | Reaproveitados nos challenges dentro do app (UI) | 1, 5 |
 | `extraction_result.py`, `logging_config.py` | Telemetria (`to_dict()` BigQuery-friendly), logging | + custo de banda (GB) e perfis/GB por corrida | 0, 10 |
 
-**Componentes novos:** `MobileApiEngine`, `AndroidUiEngine`, `DeviceProfile`, `HeaderFactory`, `StickyProxyPool`, `AccountSlot`, `SessionBridge`, `RateGovernor`, `human.py`, `warming.py` — todos em `instat/mobile/`.
+**Componentes novos:** `MobileApiEngine`, `AndroidUiEngine`, `DeviceProfile`, `HeaderFactory`, `StickyProxyPool`, `AccountSlot`, `SessionBridge`, `RateGovernor`, `human.py`, `warming.py`, **`SessionStore`, `AccountPool`, `WorkQueue`, `CursorStore`** (Fase 11) — todos em `instat/mobile/`.
 
 ---
 
@@ -418,6 +486,7 @@ ext.quit()
 
 | Risco | Prob. | Impacto | Mitigação / gate |
 |---|---|---|---|
+| **Login travando + sem paralelismo (dor atual)** | **Alta** | **Alto** | **Fase 11 (prioritária)**: sessão persistente (sem re-login), AccountPool com failover, cursor resume |
 | App não loga em emulador (atestação) | Alta | Alto | **Gate Fase 1** → plano B celular físico |
 | redroid instável no WSL2 | Média | Médio | Fase 0 decide VPS Linux se WSL falhar |
 | Política DataImpulse proíbe login no IG | ? | Alto | **Gate Fase 0**, confirmação escrita |
@@ -443,6 +512,7 @@ ext.quit()
 | 8 | não iniciada | — | — | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | — | — |
 | 9 | não iniciada | — | — | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | — | — |
 | 10 | não iniciada | — | — | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | — | — |
+| 11 ⏫ | não iniciada | — | — | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ | — | — |
 
 Status possíveis: `não iniciada` · `em andamento (passo N)` · `entregue, passo 7 pendente` · `bloqueada (gate)` · `concluída`.
 
@@ -501,3 +571,5 @@ Copiar para `docs/phase-evidence/fase-N/README.md`:
 **Proxy:** [DataImpulse tipos de conexão](https://docs.dataimpulse.com/proxies/types-of-connections) · [DataImpulse mobile](https://dataimpulse.com/mobile-proxies/) · [sticky × rotating](https://dataimpulse.com/blog/rotating-or-sticky-proxies-how-to-make-the-right-choice/) · [tun2proxy](https://github.com/tun2proxy/tun2proxy) · [tun2socks em container](https://bigmike.help/en/devops/003/) · [sockstun](https://github.com/heiher/sockstun) · [DataImpulse mobile review (~US$2/GB)](https://github.com/jvetste/dataimpulse-mobile-proxy-review)
 
 **Rate limit:** [Phyllo — limites 2026](https://www.getphyllo.com/post/instagram-api-rate-limits-explained----and-how-to-scale-beyond-them-2026) · [SMTasker warming](https://smtasker.com/automate-instagram-engagement-without-ban/) · [instagrapi followers](https://instagrapi.com/guides/get-instagram-followers-python/) · [instagrapi scraper](https://instagrapi.com/guides/instagram-scraper-python) · [scrapfly — scraping IG 2026](https://scrapfly.io/blog/posts/how-to-scrape-instagram) · [instaloader #1285](https://github.com/instaloader/instaloader/issues/1285)
+
+**Paralelismo resiliente / sessão / failover (Fase 11):** [instagrapi best practices](https://subzeroid.github.io/instagrapi/usage-guide/best-practices.html) · [login_required (relogin vs login)](https://instagrapi.com/guides/errors/login-required) · [session persistence (file/Redis/Postgres)](https://instagrapi.com/guides/instagrapi-session-persistence) · [instagrapi user.md (next_max_id chunk)](https://github.com/subzeroid/instagrapi/blob/master/docs/usage-guide/user.md) · [twscrape (account pool)](https://github.com/vladkens/twscrape) · [Scweet (multi-account pooling)](https://github.com/Altimis/Scweet) · [Redis job queue](https://redis.io/docs/latest/develop/use-cases/job-queue/) · [Celery acks_late/reject_on_worker_lost](https://dev.to/artemooon/celery-redis-at-scale-designing-a-reliable-and-efficient-task-queue-in-production-27nh)
