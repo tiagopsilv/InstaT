@@ -45,13 +45,45 @@ class PlaywrightEngine(BaseEngine):
             return False
 
     def __init__(self, browser_type: str = 'chromium', headless: bool = True,
-                 timeout: int = 10000, proxy: Optional[str] = None):
+                 timeout: int = 10000, proxy: Optional[str] = None,
+                 connect_endpoint: Optional[str] = None,
+                 connect_mode: str = 'cdp',
+                 connect_headers: Optional[dict] = None):
+        """
+        connect_endpoint: ws:// ou wss:// de um Chromium remoto.
+          Quando definido, o engine conecta via Playwright em vez de
+          fazer launch local. Suporta Bright Data Scraping Browser e
+          Browserless (ambos expõem CDP por WebSocket).
+        connect_mode: 'cdp' usa chromium.connect_over_cdp(); 'ws' usa
+          chromium.connect() (Playwright server protocol).
+          Bright Data e Browserless cloud → 'cdp'. Self-hosted
+          Playwright Server → 'ws'.
+        connect_headers: cabeçalhos HTTP extras pro handshake do
+          WebSocket. Browserless cloud já passa o token na query string
+          do endpoint, então normalmente não precisa.
+        """
         if browser_type not in ('chromium', 'webkit', 'firefox'):
             raise ValueError(f"Invalid browser_type: {browser_type}")
+        if connect_mode not in ('cdp', 'ws'):
+            raise ValueError(
+                f"Invalid connect_mode: {connect_mode!r} "
+                "(expected 'cdp' or 'ws')"
+            )
+        if connect_endpoint and browser_type != 'chromium':
+            # CDP só fala chromium-family. Bright Data/Browserless são
+            # ambos chromium-only. Falhar cedo evita um erro confuso
+            # vindo do Playwright lá embaixo.
+            raise ValueError(
+                "connect_endpoint requires browser_type='chromium' "
+                f"(got {browser_type!r})"
+            )
         self._browser_type = browser_type
         self._headless = headless
         self._timeout = timeout
         self._proxy = proxy
+        self._connect_endpoint = connect_endpoint
+        self._connect_mode = connect_mode
+        self._connect_headers = dict(connect_headers) if connect_headers else None
         self._playwright = None
         self._browser = None
         self._context = None
@@ -61,11 +93,38 @@ class PlaywrightEngine(BaseEngine):
     def login(self, username: str, password: str, **kwargs) -> bool:
         # Imports aqui (não no topo) para que is_available funcione sem playwright
         from playwright.sync_api import sync_playwright
-        from playwright_stealth import stealth_sync
+        # playwright_stealth: API mudou na 2.x. 1.x exporta `stealth_sync`
+        # como função; 2.x usa Stealth().apply_stealth_sync(page). Aceitar
+        # ambos pra não exigir downgrade nem migration step.
+        try:
+            from playwright_stealth import stealth_sync  # 1.x
+        except ImportError:
+            from playwright_stealth import Stealth  # 2.x
+            stealth_sync = Stealth().apply_stealth_sync
 
         self._playwright = sync_playwright().start()
         browser_launcher = getattr(self._playwright, self._browser_type)
-        self._browser = browser_launcher.launch(headless=self._headless)
+        if self._connect_endpoint:
+            # Remote browser (Bright Data Scraping Browser, Browserless,
+            # Playwright Server). headless é controlado pelo provider —
+            # ignorado aqui de propósito.
+            connect_kwargs = {}
+            if self._connect_headers:
+                connect_kwargs['headers'] = self._connect_headers
+            if self._connect_mode == 'cdp':
+                self._browser = browser_launcher.connect_over_cdp(
+                    self._connect_endpoint, **connect_kwargs,
+                )
+            else:
+                self._browser = browser_launcher.connect(
+                    self._connect_endpoint, **connect_kwargs,
+                )
+            logger.info(
+                f"{self.name}: connected to remote browser via "
+                f"{self._connect_mode}"
+            )
+        else:
+            self._browser = browser_launcher.launch(headless=self._headless)
 
         ctx_kwargs = {'user_agent': MOBILE_UA, 'viewport': {'width': 375, 'height': 667}}
         if self._proxy:
@@ -128,7 +187,13 @@ class PlaywrightEngine(BaseEngine):
     def extract(self, profile_id: str, list_type: str,
                 existing_profiles: Optional[Set[str]] = None,
                 max_duration: Optional[float] = None,
-                on_batch: Optional[Callable] = None) -> Set[str]:
+                on_batch: Optional[Callable] = None,
+                should_stop: Optional[Callable[[], bool]] = None,
+                with_metadata: bool = False):
+        """with_metadata aceito pra uniformidade — Playwright DOM/XHR
+        cobre só username; converte pra ProfileSummary username-only
+        no fim quando True. Pra metadata real (user_id etc.) inclua
+        httpx no cascade."""
         import time
         if not self._page:
             raise BlockedError(f'{self.name} not logged in')
@@ -213,6 +278,9 @@ class PlaywrightEngine(BaseEngine):
                 if max_duration and (time.perf_counter() - start_time) > max_duration:
                     logger.info(f'{self.name}: max_duration reached')
                     break
+                if should_stop and should_stop():
+                    logger.info(f'{self.name}: should_stop signal received')
+                    break
 
                 intercepted_before = len(intercepted)
 
@@ -278,6 +346,12 @@ class PlaywrightEngine(BaseEngine):
                 f'{self.name}: extracted {len(collected)} profiles '
                 f'(XHR: {len(intercepted)}, DOM contribution: {max(0, dom_contribution)})'
             )
+            if with_metadata:
+                try:
+                    from instat.profile_summary import ProfileSummary
+                except ImportError:
+                    from profile_summary import ProfileSummary  # type: ignore
+                return [ProfileSummary.from_username(u) for u in collected]
             return collected
 
         finally:

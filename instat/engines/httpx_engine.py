@@ -17,11 +17,15 @@ try:
     from instat.constants import human_delay
     from instat.engines.base import BaseEngine
     from instat.exceptions import BlockedError, ProfileNotFoundError, RateLimitError
+    from instat.post_metrics import PostMetrics, parse_post_from_api
+    from instat.profile_summary import ProfileSummary
     from instat.session_cache import SessionCache
 except ImportError:
     from constants import human_delay
     from engines.base import BaseEngine
     from exceptions import BlockedError, ProfileNotFoundError, RateLimitError
+    from post_metrics import PostMetrics, parse_post_from_api  # type: ignore
+    from profile_summary import ProfileSummary  # type: ignore
     from session_cache import SessionCache
 
 
@@ -291,10 +295,21 @@ class HttpxEngine(BaseEngine):
     def extract(self, profile_id: str, list_type: str,
                 existing_profiles: Optional[Set[str]] = None,
                 max_duration: Optional[float] = None,
-                on_batch: Optional[Callable] = None) -> Set[str]:
+                on_batch: Optional[Callable] = None,
+                should_stop: Optional[Callable[[], bool]] = None,
+                with_metadata: bool = False):
         """
         Pagina /friendships/{user_id}/{list_type}/ coletando usernames.
-        50 perfis por request. Respeita max_duration e on_batch.
+        50 perfis por request. Respeita max_duration, on_batch e
+        should_stop (checado entre páginas — granularidade ~1 round-trip).
+
+        with_metadata=False (default): retorna Set[str] de usernames
+          (back-compat).
+        with_metadata=True: retorna List[ProfileSummary] preservando a
+          ordem da API e populando user_id, full_name, is_verified,
+          is_private, is_business, profile_pic_url. follower_count NÃO
+          vem deste endpoint — fica None. on_batch também recebe a lista
+          de ProfileSummary no modo with_metadata.
         """
         if list_type not in ('followers', 'following'):
             raise ValueError(f"Invalid list_type: {list_type}")
@@ -302,12 +317,19 @@ class HttpxEngine(BaseEngine):
         user_id = self._resolve_user_id(profile_id)
         endpoint = f'{BASE_URL}/friendships/{user_id}/{list_type}/'
         profiles: Set[str] = set(existing_profiles) if existing_profiles else set()
+        # Modo with_metadata mantém uma lista ordenada paralela
+        # (ordem original da API, dedup por username via `seen`).
+        summaries: list = [] if with_metadata else []
+        seen_usernames: Set[str] = set(profiles)
         start_time = time.perf_counter()
         max_id = None
 
         while True:
             if max_duration and (time.perf_counter() - start_time) > max_duration:
                 logger.info(f'{self.name}: max_duration reached')
+                break
+            if should_stop and should_stop():
+                logger.info(f'{self.name}: should_stop signal received')
                 break
 
             params = {'count': 50}
@@ -334,17 +356,30 @@ class HttpxEngine(BaseEngine):
             users = data.get('users', [])
             added = 0
             for u in users:
-                if isinstance(u, dict):
-                    username = u.get('username', '')
-                    if username:
-                        profiles.add(username)
-                        added += 1
+                if not isinstance(u, dict):
+                    continue
+                username = u.get('username', '')
+                if not username:
+                    continue
+                if username in seen_usernames:
+                    continue
+                profiles.add(username)
+                seen_usernames.add(username)
+                added += 1
+                if with_metadata:
+                    try:
+                        summaries.append(ProfileSummary.from_api_user(u))
+                    except ValueError:
+                        # API shape drift — fall back to username-only.
+                        summaries.append(
+                            ProfileSummary.from_username(username)
+                        )
 
             logger.debug(f'{self.name}: +{added} profiles (total: {len(profiles)})')
 
             if on_batch:
                 try:
-                    on_batch(profiles)
+                    on_batch(summaries if with_metadata else profiles)
                 except Exception as e:
                     logger.debug(f'{self.name}: on_batch error: {e}')
 
@@ -355,7 +390,7 @@ class HttpxEngine(BaseEngine):
 
             human_delay(1.0, 0.3)
 
-        return profiles
+        return summaries if with_metadata else profiles
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """Contagem via web_profile_info (edge_followed_by / edge_follow)."""
@@ -379,6 +414,79 @@ class HttpxEngine(BaseEngine):
         except Exception as e:
             logger.debug(f'{self.name}: get_total_count failed: {e}')
             return None
+
+    def get_recent_posts(self, profile_id: str, limit: int = 5) -> "list[PostMetrics]":
+        """Retorna até `limit` posts recentes via /feed/user/{user_id}/.
+
+        Pagina a API privada (50 itens/página, mesma de extract) e
+        decodifica via `parse_post_from_api`. Para na primeira página
+        que satisfaz `limit` ou quando `next_max_id` desaparece.
+
+        Levanta:
+          ValueError se limit < 1
+          ProfileNotFoundError se perfil não existe
+          RateLimitError em 429
+          BlockedError em 4xx (auth/compliance)
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        if not self._client:
+            raise BlockedError(f'{self.name}: not logged in')
+
+        user_id = self._resolve_user_id(profile_id)
+        endpoint = f'{BASE_URL}/feed/user/{user_id}/'
+        out: list[PostMetrics] = []
+        max_id: Optional[str] = None
+        # 50 é o máximo prático da API; abaixo disso o IG ignora.
+        page_size = min(50, max(limit, 12))
+
+        while len(out) < limit:
+            params: dict = {'count': page_size}
+            if max_id:
+                params['max_id'] = max_id
+            try:
+                r = self._client.get(endpoint, params=params)
+            except Exception as e:
+                raise BlockedError(f'{self.name}: feed request failed: {e}') from e
+            if r.status_code == 429:
+                raise RateLimitError(f'{self.name}: rate limited on feed')
+            if r.status_code == 404:
+                raise ProfileNotFoundError(
+                    f'{self.name}: user {profile_id} not found'
+                )
+            if r.status_code in (400, 403):
+                raise BlockedError(
+                    f'{self.name}: feed blocked at status {r.status_code}'
+                )
+            if r.status_code != 200:
+                raise BlockedError(
+                    f'{self.name}: feed unexpected status {r.status_code}'
+                )
+            try:
+                data = r.json()
+            except Exception:
+                raise BlockedError(f'{self.name}: non-JSON feed response')
+
+            items = data.get('items', [])
+            for item in items:
+                try:
+                    out.append(parse_post_from_api(item))
+                except ValueError as e:
+                    logger.debug(
+                        f'{self.name}: skipping malformed post item: {e}'
+                    )
+                    continue
+                if len(out) >= limit:
+                    break
+
+            max_id = data.get('next_max_id')
+            more_items = data.get('more_available', True)
+            if not max_id or not more_items:
+                break
+
+            human_delay(0.8, 0.3)
+
+        return out[:limit]
 
     def quit(self) -> None:
         """Fecha o httpx.Client. Safe se não logado."""

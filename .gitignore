@@ -19,3 +19,8 @@ instat/logs/
 
 # Egg info
 *.egg-info/
+# Manual real-run helpers (credentials live outside repo)
+_real_*.py
+_real_run.log
+_real_following_output.txt
+tests/_env_loader.py

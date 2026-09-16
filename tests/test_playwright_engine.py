@@ -115,6 +115,102 @@ class TestPlaywrightEngine(unittest.TestCase):
             self.assertTrue(result)
             mock_stealth_sync.assert_called_once_with(mock_page)
 
+    def test_invalid_connect_mode_raises(self):
+        with self.assertRaises(ValueError):
+            PlaywrightEngine(connect_endpoint='wss://x', connect_mode='nope')
+
+    def test_connect_endpoint_requires_chromium(self):
+        with self.assertRaises(ValueError):
+            PlaywrightEngine(
+                browser_type='firefox',
+                connect_endpoint='wss://x',
+            )
+
+    def test_login_uses_connect_over_cdp_when_endpoint_set(self):
+        # Mock chain. Must NOT call .launch — should call .connect_over_cdp.
+        mock_page = MagicMock()
+        mock_page.url = 'https://www.instagram.com/'
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.cookies.return_value = []
+
+        mock_browser = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+
+        mock_browser_launcher = MagicMock()
+        mock_browser_launcher.connect_over_cdp.return_value = mock_browser
+
+        mock_pw_instance = MagicMock()
+        mock_pw_instance.chromium = mock_browser_launcher
+
+        mock_sync_pw = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+
+        pw_sync_module = MagicMock()
+        pw_sync_module.sync_playwright = mock_sync_pw
+        pw_stealth_module = MagicMock()
+        pw_stealth_module.stealth_sync = MagicMock()
+
+        with patch.dict(sys.modules, {
+            'playwright': MagicMock(),
+            'playwright.sync_api': pw_sync_module,
+            'playwright_stealth': pw_stealth_module,
+        }):
+            e = PlaywrightEngine(
+                browser_type='chromium',
+                connect_endpoint='wss://brd-customer-X-zone-Y:Z@brd.superproxy.io:9222',
+                connect_mode='cdp',
+                connect_headers={'X-Custom': 'v'},
+            )
+            e._session_cache = MagicMock()
+            e._session_cache.load.return_value = None
+
+            result = e.login('user', 'pass')
+            self.assertTrue(result)
+            mock_browser_launcher.connect_over_cdp.assert_called_once_with(
+                'wss://brd-customer-X-zone-Y:Z@brd.superproxy.io:9222',
+                headers={'X-Custom': 'v'},
+            )
+            mock_browser_launcher.launch.assert_not_called()
+
+    def test_login_uses_connect_when_mode_ws(self):
+        mock_page = MagicMock()
+        mock_page.url = 'https://www.instagram.com/'
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.cookies.return_value = []
+        mock_browser = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_browser_launcher = MagicMock()
+        mock_browser_launcher.connect.return_value = mock_browser
+        mock_pw_instance = MagicMock()
+        mock_pw_instance.chromium = mock_browser_launcher
+        mock_sync_pw = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+
+        pw_sync_module = MagicMock()
+        pw_sync_module.sync_playwright = mock_sync_pw
+        pw_stealth_module = MagicMock()
+        pw_stealth_module.stealth_sync = MagicMock()
+
+        with patch.dict(sys.modules, {
+            'playwright': MagicMock(),
+            'playwright.sync_api': pw_sync_module,
+            'playwright_stealth': pw_stealth_module,
+        }):
+            e = PlaywrightEngine(
+                connect_endpoint='wss://chrome.browserless.io?token=ABC',
+                connect_mode='ws',
+            )
+            e._session_cache = MagicMock()
+            e._session_cache.load.return_value = None
+
+            self.assertTrue(e.login('user', 'pass'))
+            mock_browser_launcher.connect.assert_called_once()
+            mock_browser_launcher.connect_over_cdp.assert_not_called()
+            mock_browser_launcher.launch.assert_not_called()
+
     def test_login_raises_blocked_on_checkpoint_url(self):
         mock_page = MagicMock()
         mock_page.url = 'https://www.instagram.com/challenge/abc123'

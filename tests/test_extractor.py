@@ -101,5 +101,67 @@ class TestInstaExtractor(unittest.TestCase):
         self.extractor.wait_interval = 0.05
 
 
+class TestInstaExtractorEngineInjection(unittest.TestCase):
+    """`engines=[...]` aceita BaseEngine instances pré-construídas
+    além das strings — habilita injetar PlaywrightEngine pra Bright Data
+    ou SeleniumEngine pra Browserless sem mexer no construtor."""
+
+    def test_build_engines_accepts_base_engine_instance(self):
+        from instat.engines.base import BaseEngine
+
+        class FakeEngine(BaseEngine):
+            @property
+            def name(self): return 'fake'
+            @property
+            def is_available(self): return True
+            def login(self, u, p, **kw): return True
+            def extract(self, *a, **kw): return set()
+            def get_total_count(self, *a, **kw): return None
+            def quit(self): pass
+
+        injected = FakeEngine()
+        with patch('instat.extractor.InstaLogin') as MockLogin:
+            mock_inst = MockLogin.return_value
+            mock_inst.driver = MagicMock()
+            mock_inst.close_keywords = []
+            ext = InstaExtractor(
+                'u', 'p', headless=True,
+                engines=['selenium', injected],
+            )
+        try:
+            engine_names = [e.name for e in ext._engine_manager.engines]
+            self.assertIn('fake', engine_names)
+            self.assertIn('selenium', engine_names)
+        finally:
+            ext.quit()
+
+    def test_build_engines_skips_unavailable_instance(self):
+        from instat.engines.base import BaseEngine
+
+        class UnavailableEngine(BaseEngine):
+            @property
+            def name(self): return 'unavail'
+            @property
+            def is_available(self): return False
+            def login(self, u, p, **kw): return True
+            def extract(self, *a, **kw): return set()
+            def get_total_count(self, *a, **kw): return None
+            def quit(self): pass
+
+        with patch('instat.extractor.InstaLogin') as MockLogin:
+            mock_inst = MockLogin.return_value
+            mock_inst.driver = MagicMock()
+            mock_inst.close_keywords = []
+            ext = InstaExtractor(
+                'u', 'p', headless=True,
+                engines=['selenium', UnavailableEngine()],
+            )
+        try:
+            engine_names = [e.name for e in ext._engine_manager.engines]
+            self.assertNotIn('unavail', engine_names)
+        finally:
+            ext.quit()
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=False)

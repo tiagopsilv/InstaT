@@ -34,7 +34,7 @@ class TestWarmupScrollBehavior(unittest.TestCase):
         eng._selectors.get.return_value = "span._ap3a"
         return eng
 
-    @patch('instat.engines.selenium_engine.human_delay', return_value=0)
+    @patch('instat.scroll_loop.human_delay', return_value=0)
     def test_stale_rounds_higher_limit_during_warmup(self, _hd):
         """With 0 collected profiles (warmup region), the loop should
         tolerate up to warmup_stale_rounds stale before triggering reopen."""
@@ -52,8 +52,8 @@ class TestWarmupScrollBehavior(unittest.TestCase):
 
         eng._reopen_modal = fake_reopen
 
-        with patch.object(eng, '_scroll_modal_js'), \
-             patch('instat.engines.selenium_engine.Utils') as MockUtils:
+        with patch('instat.scroll_loop.ScrollLoop._scroll_modal_js'), \
+             patch('instat.scroll_loop.Utils') as MockUtils:
             MockUtils.batch_read_text.return_value = set()
             try:
                 eng._get_profiles(
@@ -68,7 +68,7 @@ class TestWarmupScrollBehavior(unittest.TestCase):
 
         self.assertEqual(len(reopen_calls), 1, "reopen called exactly once")
 
-    @patch('instat.engines.selenium_engine.human_delay', return_value=0)
+    @patch('instat.scroll_loop.human_delay', return_value=0)
     def test_stale_rounds_normal_limit_after_warmup(self, _hd):
         """Once collection crosses warmup_threshold, revert to strict
         MAX_STALE_ROUNDS=4 limit."""
@@ -96,8 +96,8 @@ class TestWarmupScrollBehavior(unittest.TestCase):
             except StopIteration:
                 return set()
 
-        with patch.object(eng, '_scroll_modal_js'), \
-             patch('instat.engines.selenium_engine.Utils') as MockUtils:
+        with patch('instat.scroll_loop.ScrollLoop._scroll_modal_js'), \
+             patch('instat.scroll_loop.Utils') as MockUtils:
             MockUtils.batch_read_text.side_effect = batch
             try:
                 eng._get_profiles(

@@ -34,6 +34,20 @@ class BaseEngine(ABC):
         """Retorna a contagem total de followers/following sem abrir modal."""
         ...
 
+    def get_recent_posts(self, profile_id: str, limit: int = 5) -> list:
+        """Retorna até `limit` posts recentes com métricas de engajamento.
+
+        Default: raise NotImplementedError. Engines que não suportam
+        (Selenium DOM scraping fica caro pra cada post) deixam o
+        EngineManager cascatear pra próxima engine. Engines que
+        suportam (HttpxEngine via API privada) sobrescrevem.
+
+        Retorna lista de PostMetrics (instat.post_metrics)."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support get_recent_posts. "
+            "Include httpx engine in your cascade for post metrics."
+        )
+
     @abstractmethod
     def quit(self) -> None:
         """Libera recursos (fecha browser, sessão, etc.)."""

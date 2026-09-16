@@ -70,13 +70,25 @@ def parallel_extract(
     engine_factory: Optional[Callable[[], SeleniumEngine]] = None,
     headless: bool = True,
     timeout: int = 20,
+    preloaded_engines: Optional[List[SeleniumEngine]] = None,
 ) -> List[str]:
     """
     Executa N SeleniumEngines em paralelo sobre o mesmo perfil alvo.
     Une coletas num set compartilhado e para quando atinge threshold.
 
     Retorna lista dos perfis coletados pela união.
+
+    `preloaded_engines`: quando fornecido, pula a etapa de login e
+    reutiliza engines já autenticadas (ver `WorkerPool`). O número de
+    workers passa a ser `len(preloaded_engines)` e os engines NÃO são
+    encerrados ao final — pertencem ao chamador.
     """
+    if preloaded_engines:
+        return _parallel_extract_with_pool(
+            profile_id, list_type, preloaded_engines,
+            stop_threshold, target_count, max_duration,
+        )
+
     if workers < 1:
         raise ValueError("workers must be >= 1")
     if accounts is None:
@@ -134,6 +146,50 @@ def parallel_extract(
     total = len(coord.shared)
     logger.info(
         f"parallel_extract: {workers} workers collected {total} unique "
+        f"{list_type} for {profile_id} in {elapsed:.1f}s"
+    )
+    return coord.snapshot()
+
+
+def _parallel_extract_with_pool(
+    profile_id: str,
+    list_type: str,
+    engines: List[SeleniumEngine],
+    stop_threshold: float,
+    target_count: Optional[int],
+    max_duration: Optional[float],
+) -> List[str]:
+    """Variant that uses a pre-authenticated pool. No login, no quit."""
+    workers = len(engines)
+    coord = ParallelCoordinator(target_count, stop_threshold)
+
+    def _worker(idx: int) -> Set[str]:
+        engine = engines[idx]
+        try:
+            def on_batch(batch):
+                coord.ingest(batch)
+            result = engine.extract(
+                profile_id, list_type,
+                existing_profiles=coord.snapshot(),
+                max_duration=max_duration,
+                on_batch=on_batch,
+                should_stop=coord.should_stop,
+            )
+            coord.ingest(set(result))
+            return set(result)
+        except Exception as e:
+            logger.warning(f"pool worker {idx} failed: {e}")
+            return set()
+
+    start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(_worker, i) for i in range(workers)]
+        for _ in as_completed(futures):
+            pass
+    elapsed = time.perf_counter() - start
+    total = len(coord.shared)
+    logger.info(
+        f"parallel_extract (pool): {workers} workers collected {total} unique "
         f"{list_type} for {profile_id} in {elapsed:.1f}s"
     )
     return coord.snapshot()

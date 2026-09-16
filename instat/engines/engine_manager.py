@@ -2,7 +2,7 @@
 Orquestrador de extração com fallbacks completos.
 Integra engines, session pool, proxy pool, checkpoint e backoff.
 """
-from typing import Iterable, List, Optional, Set
+from typing import Callable, Iterable, List, Optional, Set
 
 from loguru import logger
 
@@ -63,6 +63,9 @@ class EngineManager:
                 max_duration: Optional[float] = None,
                 exclude_engines: Optional[Iterable[str]] = None,
                 rate_limit_sink: Optional[List[str]] = None,
+                should_stop: Optional["Callable[[], bool]"] = None,
+                with_metadata: bool = False,
+                metrics_sink: Optional[dict] = None,
                 **kwargs) -> list:
         """
         Orquestrador completo de extração com fallbacks.
@@ -100,11 +103,19 @@ class EngineManager:
                     profiles, checkpoint, backoff,
                     max_duration=max_duration,
                     rate_limit_sink=rate_limit_sink,
+                    should_stop=should_stop,
+                    with_metadata=with_metadata,
                     **kwargs
                 )
                 if result is not None:
                     checkpoint.clear()
                     backoff.reset()
+                    if metrics_sink is not None:
+                        metrics_sink['engine_used'] = engine.name
+                        if session is not None:
+                            metrics_sink.setdefault(
+                                'sessions_used', [],
+                            ).append(session.username)
                     return list(result)
 
         # Todas tentativas falharam
@@ -113,6 +124,17 @@ class EngineManager:
                 f"EngineManager: all engines/sessions exhausted. "
                 f"Returning partial result with {len(profiles)} profiles."
             )
+            if metrics_sink is not None:
+                metrics_sink['partial'] = True
+            if with_metadata:
+                # Engines que raised perderam seus ProfileSummary ricos;
+                # sintetizamos username-only do union acumulado em
+                # `profiles`. Melhor que zero perfis perdidos.
+                try:
+                    from instat.profile_summary import ProfileSummary
+                except ImportError:
+                    from profile_summary import ProfileSummary  # type: ignore
+                return [ProfileSummary.from_username(u) for u in profiles]
             return list(profiles)
 
         raise AllEnginesBlockedError(
@@ -228,6 +250,8 @@ class EngineManager:
                             profiles: Set[str], checkpoint, backoff,
                             max_duration=None,
                             rate_limit_sink: Optional[List[str]] = None,
+                            should_stop: Optional[Callable[[], bool]] = None,
+                            with_metadata: bool = False,
                             **kwargs):
         """
         Tenta 1 (engine, session) pair. Retorna profiles (set) em sucesso, None em falha.
@@ -279,21 +303,50 @@ class EngineManager:
         # Importante: update in-place de `profiles` (set mutável) para
         # que BlockedError subsequente ainda preserve os dados via
         # `if profiles` no extract() → retorna parcial.
+        # Em with_metadata mode, batch pode ser Set[str] (Selenium scroll
+        # passa usernames) ou List[ProfileSummary] (httpx). Em ambos os
+        # casos extraímos username pra alimentar o set de fallback —
+        # quando a cascade inteira falha, sintetizamos username-only
+        # ProfileSummary list a partir desse set. Garante que partial
+        # de Selenium (mesmo com BlockedError) não seja perdido.
         def on_batch(batch):
             try:
-                profiles.update(batch)
+                if with_metadata:
+                    for item in batch:
+                        if isinstance(item, str):
+                            profiles.add(item)
+                        else:
+                            name = getattr(item, 'username', None)
+                            if name:
+                                profiles.add(name)
+                else:
+                    profiles.update(batch)
                 checkpoint.save(profiles)
             except Exception as e:
                 logger.debug(f"checkpoint.save failed in on_batch: {e}")
 
         try:
             logger.info(f"Trying engine: {engine.name}")
-            new = engine.extract(
-                profile_id, list_type,
-                existing_profiles=profiles,
-                max_duration=max_duration,
-                on_batch=on_batch,
-            )
+            extract_kwargs = {
+                'existing_profiles': profiles,
+                'max_duration': max_duration,
+                'on_batch': on_batch,
+            }
+            # should_stop é honrado por engines que sabem como
+            # checar dentro do loop interno (Selenium scroll loop).
+            # Engines que ignoram silenciosamente (httpx hoje) não
+            # quebram — kwarg é aceito via **kwargs ou ignorado.
+            if should_stop is not None:
+                extract_kwargs['should_stop'] = should_stop
+            if with_metadata:
+                extract_kwargs['with_metadata'] = True
+            new = engine.extract(profile_id, list_type, **extract_kwargs)
+            # with_metadata: a engine retorna List[ProfileSummary].
+            # NÃO mergeamos no `profiles: Set[str]` (tipo incompatível);
+            # cross-engine partial preservation só vale pro modo
+            # username-only. Documentado em InstaExtractor.get_followers.
+            if with_metadata:
+                return new if new is not None else []
             if new is not None:
                 profiles |= set(new)
             return profiles
@@ -332,6 +385,83 @@ class EngineManager:
             return SessionPool.META_INTERSTITIAL_COOLDOWN
         return SessionPool.DEFAULT_COOLDOWN
 
+    def extract_with_metrics(self, profile_id: str, list_type: str,
+                             **kwargs):
+        """Como extract(), mas envolve a chamada com captura de métricas
+        operacionais. Retorna ExtractionResult.
+
+        Sem custo extra além de:
+          - 1 chamada `get_total_count` antes da extração (best-effort,
+            pode falhar silenciosamente).
+          - leitura de `risk_score()` do BlockPredictor no fim, se wired.
+          - acumulação de rate-limit hits via rate_limit_sink existente.
+        """
+        import time as _time
+        from datetime import datetime, timezone
+        try:
+            from instat.extraction_result import ExtractionResult
+        except ImportError:
+            from extraction_result import ExtractionResult  # type: ignore
+
+        metrics_sink: dict = {}
+        rate_limit_hits: List[str] = []
+        kwargs.setdefault('rate_limit_sink', rate_limit_hits)
+        # Permitir caller passar próprio sink — preserva referência.
+        if kwargs['rate_limit_sink'] is not rate_limit_hits:
+            rate_limit_hits = kwargs['rate_limit_sink']
+
+        started_at = datetime.now(timezone.utc)
+        start_perf = _time.perf_counter()
+
+        expected_count: Optional[int] = None
+        try:
+            expected_count = self.get_total_count(profile_id, list_type)
+        except Exception as e:
+            logger.debug(
+                f"extract_with_metrics: get_total_count failed: {e}"
+            )
+
+        profiles = self.extract(
+            profile_id, list_type,
+            metrics_sink=metrics_sink,
+            **kwargs,
+        )
+
+        finished_at = datetime.now(timezone.utc)
+        duration = _time.perf_counter() - start_perf
+        collected = len(profiles)
+        coverage = (collected / expected_count) if expected_count else None
+
+        # BlockPredictor opcional — toma snapshot de qualquer engine
+        # que tenha um wired (single shared instance é o pattern).
+        bp_score: Optional[float] = None
+        for eng in self.engines:
+            bp = getattr(eng, '_block_predictor', None)
+            if bp is None:
+                continue
+            try:
+                bp_score = bp.risk_score()
+                break
+            except Exception:
+                continue
+
+        return ExtractionResult(
+            profiles=profiles,
+            profile_id=profile_id,
+            list_type=list_type,
+            collected_count=collected,
+            duration_seconds=duration,
+            started_at=started_at,
+            finished_at=finished_at,
+            expected_count=expected_count,
+            coverage_pct=coverage,
+            partial=metrics_sink.get('partial', False),
+            engine_used=metrics_sink.get('engine_used'),
+            sessions_used=metrics_sink.get('sessions_used', []),
+            rate_limit_hits=len(rate_limit_hits),
+            block_predictor_score=bp_score,
+        )
+
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """Tenta obter contagem com cada engine."""
         for engine in self.engines:
@@ -341,6 +471,73 @@ class EngineManager:
                 logger.warning(f"{engine.name} blocked on get_total_count")
                 continue
         return None
+
+    def get_recent_posts(self, profile_id: str, limit: int = 5) -> list:
+        """Cascade get_recent_posts. Engines que raise NotImplementedError
+        são puladas silenciosamente — Selenium/Playwright caem nesse
+        caso hoje. Retorna lista de PostMetrics da primeira engine que
+        consegue.
+
+        Faz login on-demand quando preciso (cookie handoff prioritário,
+        creds default como fallback). Reusa a lógica do extract — não
+        envolve SessionPool porque post fetch é leve e não precisa de
+        rotação por padrão.
+        """
+        last_err: Optional[Exception] = None
+        for engine in self.engines:
+            try:
+                self._ensure_engine_logged_in(engine)
+            except Exception as e:
+                logger.debug(
+                    f"{engine.name}: skip get_recent_posts — login failed: {e}"
+                )
+                continue
+            try:
+                return engine.get_recent_posts(profile_id, limit)
+            except NotImplementedError:
+                logger.debug(
+                    f"{engine.name}: does not implement get_recent_posts — "
+                    "trying next engine"
+                )
+                continue
+            except BlockedError as e:
+                logger.warning(
+                    f"{engine.name}: get_recent_posts blocked: {e}"
+                )
+                last_err = e
+                continue
+            except Exception as e:
+                logger.warning(
+                    f"{engine.name}: get_recent_posts unexpected: "
+                    f"{type(e).__name__}: {e}"
+                )
+                last_err = e
+                continue
+        if last_err is not None:
+            raise last_err
+        raise NotImplementedError(
+            "No engine in the cascade implements get_recent_posts. "
+            "Add httpx engine: engines=['selenium', 'httpx']"
+        )
+
+    def _ensure_engine_logged_in(self, engine: BaseEngine) -> None:
+        """Garante que engine está logado. Cookie handoff primeiro,
+        creds default depois. Usado por get_recent_posts e qualquer
+        método auxiliar que não passe pelo path de extract."""
+        if id(engine) in self._logged_in_engines:
+            return
+        if self._try_cookie_handoff(engine):
+            self._logged_in_engines.add(id(engine))
+            return
+        if self._default_credentials is not None:
+            u, p = self._default_credentials
+            engine.login(u, p)
+            self._logged_in_engines.add(id(engine))
+            return
+        raise RuntimeError(
+            f"{engine.name}: no login path available "
+            "(no cookie source + no default_credentials)"
+        )
 
     def quit_all(self) -> None:
         """Fecha todas as engines."""

@@ -197,7 +197,7 @@ class TestThreadSafety(unittest.TestCase):
 class TestSeleniumEngineIntegration(unittest.TestCase):
     """SeleniumEngine calls predictor.record_stale if attribute is set."""
 
-    @patch('instat.engines.selenium_engine.human_delay', return_value=0)
+    @patch('instat.scroll_loop.human_delay', return_value=0)
     def test_stale_events_flow_to_predictor(self, _hd):
         from instat.engines.selenium_engine import SeleniumEngine
         from instat.exceptions import BlockedError
@@ -213,8 +213,8 @@ class TestSeleniumEngineIntegration(unittest.TestCase):
         predictor = BlockPredictor()
         eng._block_predictor = predictor
 
-        with patch.object(eng, '_scroll_modal_js'), \
-             patch('instat.engines.selenium_engine.Utils') as MockUtils:
+        with patch('instat.scroll_loop.ScrollLoop._scroll_modal_js'), \
+             patch('instat.scroll_loop.Utils') as MockUtils:
             MockUtils.batch_read_text.return_value = set()
             try:
                 eng._get_profiles(

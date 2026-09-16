@@ -44,6 +44,9 @@ playwright = [
 httpx = [
     "httpx>=0.25"
 ]
+stealth = [
+    "undetected-chromedriver>=3.5"
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",

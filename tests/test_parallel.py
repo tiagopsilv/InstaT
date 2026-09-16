@@ -133,7 +133,7 @@ class TestParallelExtract(unittest.TestCase):
 
 
 class TestSeleniumShouldStop(unittest.TestCase):
-    @patch('instat.engines.selenium_engine.human_delay', return_value=0)
+    @patch('instat.scroll_loop.human_delay', return_value=0)
     def test_should_stop_exits_loop(self, _hd):
         from instat.engines.selenium_engine import SeleniumEngine
         eng = SeleniumEngine()
@@ -141,7 +141,7 @@ class TestSeleniumShouldStop(unittest.TestCase):
         eng._selectors = MagicMock()
         eng._selectors.get.return_value = 'span._ap3a'
 
-        with patch('instat.engines.selenium_engine.Utils.batch_read_text',
+        with patch('instat.scroll_loop.Utils.batch_read_text',
                    return_value={f'u{i}' for i in range(10)}):
             result = eng._get_profiles(
                 expected_count=1000, max_duration=10.0,

@@ -39,6 +39,7 @@ logger.add(
 logger.add("instat/logs/insta_extractor.log", rotation="10 MB", retention="10 days", level="DEBUG", backtrace=True, diagnose=False)
 
 try:
+    from instat.engines.base import BaseEngine
     from instat.engines.engine_manager import EngineManager
     from instat.engines.selenium_engine import SeleniumEngine
     from instat.exceptions import LoginError
@@ -46,7 +47,9 @@ try:
     from instat.login import InstaLogin
     from instat.proxy import ProxyPool
     from instat.session_pool import SessionPool
+    from instat.worker_pool import WorkerPool
 except ImportError:
+    from engines.base import BaseEngine
     from engines.engine_manager import EngineManager
     from engines.selenium_engine import SeleniumEngine
     from exceptions import LoginError
@@ -54,6 +57,7 @@ except ImportError:
     from login import InstaLogin
     from proxy import ProxyPool
     from session_pool import SessionPool
+    from worker_pool import WorkerPool  # type: ignore
 
 
 class InstaExtractor:
@@ -93,13 +97,19 @@ class InstaExtractor:
                  headless: bool = True, timeout: int = 10,
                  proxies: Optional[List[str]] = None,
                  accounts: Optional[List[Dict[str, str]]] = None,
-                 engines: Optional[List[str]] = None,
+                 engines=None,
                  exporter: Optional[BaseExporter] = None,
                  imap_config=None,
                  completion_threshold: Optional[float] = None,
-                 block_predictor=None) -> None:
+                 block_predictor=None,
+                 use_stdlib_logging: bool = False) -> None:
         """
-        engines: lista de nomes ['selenium', 'playwright', 'httpx']. Default: ['selenium'].
+        engines: lista mista de nomes ('selenium', 'playwright',
+          'httpx') OU instâncias de BaseEngine já configuradas. Default:
+          ['selenium']. Use instâncias quando precisar de configuração
+          que o nome não cobre — por ex. PlaywrightEngine apontando
+          pra Bright Data Scraping Browser via connect_endpoint, ou
+          SeleniumEngine com webdriver_factory pra Browserless.
         exporter: exporter opcional chamado após cada extração bem-sucedida.
         imap_config: dict com host/user/password/port/... para resolver o
           challenge 'Check your email' do Instagram via IMAP automaticamente.
@@ -116,16 +126,35 @@ class InstaExtractor:
           `completion_threshold=None` (default) + `get_*_until_complete`
           ao invés disso — o wrapper acumula parciais entre retries.
         """
+        if use_stdlib_logging:
+            # Reroute Loguru to stdlib logging so Cloud Logging /
+            # journald / any other stdlib-based handler picks records
+            # up. Done before the rest of __init__ so the InstaLogin
+            # init below already emits via the new sink.
+            try:
+                from instat.logging_config import configure_logging
+            except ImportError:
+                from logging_config import configure_logging  # type: ignore
+            configure_logging(use_stdlib=True)
         self.username = username
         self.password = password
         self.timeout = timeout
         self._exporter = exporter
         self._imap_config = imap_config
+        # Persistent pool of pre-logged-in workers. Populated via
+        # `set_worker(username, password)`. When non-empty, the
+        # parallel-extraction path reuses these engines across calls
+        # instead of spinning up + logging in fresh browsers each time.
+        self._worker_pool: Optional[WorkerPool] = None
         # Stored for `get_*_with_rotation` to instantiate new extractors
         # with consistent configuration when rotating through fallback
         # accounts. Not part of the public API.
         self._headless = headless
-        self._engine_names = list(engines or ['selenium'])
+        # Rotation re-instancia engines via _build_rotation_extractor;
+        # só faz sentido pra nomes (strings). Instâncias pré-configuradas
+        # são opacas — não dá pra clonar com creds diferentes — então
+        # ficam de fora do reaproveitamento por rotação.
+        self._engine_names = [e for e in (engines or ['selenium']) if isinstance(e, str)] or ['selenium']
         if completion_threshold is not None and not (0 < completion_threshold <= 1):
             raise ValueError(
                 f"completion_threshold must be in (0, 1], got {completion_threshold}"
@@ -142,9 +171,9 @@ class InstaExtractor:
             session_pool = SessionPool(accounts, proxy_pool=proxy_pool)
             logger.info(f"InstaExtractor: using session pool with {len(accounts)} accounts")
 
-        # Resolver lista de engines
-        engine_names = engines or ['selenium']
-        engine_instances = self._build_engines(engine_names, headless, timeout)
+        # Resolver lista de engines (strings + instâncias pré-construídas)
+        engine_spec = engines or ['selenium']
+        engine_instances = self._build_engines(engine_spec, headless, timeout)
         primary_engine = engine_instances[0]
 
         # Propaga imap_config para engines Selenium (único capaz de resolver
@@ -211,11 +240,20 @@ class InstaExtractor:
         if session_pool is None:
             self._engine_manager._logged_in_engines.add(id(primary_engine))
 
-    def _build_engines(self, names: List[str], headless: bool, timeout: int):
+    def _build_engines(self, spec, headless: bool, timeout: int):
         """
-        Converte nomes em instâncias de engines.
-        Filtra engines indisponíveis silenciosamente.
-        Levanta RuntimeError se nenhuma engine usável.
+        Converte cada item de `spec` em uma engine usável.
+
+        Itens podem ser:
+          - str ('selenium' | 'playwright' | 'httpx'): construído aqui
+            com config padrão.
+          - BaseEngine instance: já construída pelo caller (ex.:
+            PlaywrightEngine(connect_endpoint='wss://brd...') pra
+            Bright Data, ou SeleniumEngine(webdriver_factory=...) pra
+            Browserless). Anexada como está.
+
+        Filtra engines indisponíveis silenciosamente. Levanta
+        RuntimeError se nenhuma engine usável.
         """
         try:
             from instat.engines.playwright_engine import PlaywrightEngine
@@ -223,7 +261,17 @@ class InstaExtractor:
             from engines.playwright_engine import PlaywrightEngine
 
         built = []
-        for name in names:
+        for item in spec:
+            if isinstance(item, BaseEngine):
+                if item.is_available:
+                    built.append(item)
+                else:
+                    logger.warning(
+                        f"engine instance {type(item).__name__} reports "
+                        "is_available=False — skipping"
+                    )
+                continue
+            name = item
             if name == 'selenium':
                 built.append(SeleniumEngine(
                     headless=headless, timeout=timeout, _login_class=InstaLogin
@@ -247,7 +295,7 @@ class InstaExtractor:
             else:
                 logger.warning(f"Unknown engine name: {name}")
         if not built:
-            raise RuntimeError(f"No usable engines from {names}")
+            raise RuntimeError(f"No usable engines from {spec}")
         return built
 
     # --- Configurable attributes delegated to engine ---
@@ -342,6 +390,63 @@ class InstaExtractor:
         og_title = _meta('og:title')
         og_image = _meta('og:image')
 
+        # Bio extraction — 3-strategy fallback because IG layout drifts
+        # and a single probe is brittle:
+        #   (1) Structured probe on <header section> looking for a
+        #       multi-line div/span/h1 without anchors. Catches most
+        #       desktop layouts.
+        #   (2) Inline JSON probe: `window.__additionalDataLoaded` /
+        #       SharedData script has `user.biography` directly.
+        #       Most reliable when the structural DOM differs.
+        #   (3) Permissive scan: any span[dir="auto"] not anchor-nested
+        #       and not matching counter shape. Last-ditch but cheap.
+        # All return None silently on miss — graceful degradation.
+        bio: Optional[str] = None
+        try:
+            bio = driver.execute_script(r"""
+                // Strategy 1: header section structural scan
+                const h = document.querySelector('header section');
+                if (h) {
+                    const candidates = h.querySelectorAll('div, span, h1');
+                    for (const el of candidates) {
+                        const t = (el.textContent || '').trim();
+                        if (t.length < 20 || t.length > 1000) continue;
+                        if (el.querySelector('a')) continue;
+                        if (/followers|following|posts|seguidores|seguindo|publicaç/i.test(t)) continue;
+                        return t;
+                    }
+                }
+                // Strategy 2: inline JSON via window.__additionalDataLoaded
+                // / SharedData fallback. IG stores user.biography directly.
+                const scripts = document.querySelectorAll('script');
+                for (const s of scripts) {
+                    const txt = s.textContent || '';
+                    const m = txt.match(/"biography":\s*"((?:[^"\\]|\\.){0,1000})"/);
+                    if (m) {
+                        try {
+                            const raw = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                            if (raw.length >= 1) return raw;
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+                // Strategy 3: permissive spans
+                const spans = document.querySelectorAll('span[dir="auto"]');
+                for (const s of spans) {
+                    const t = (s.textContent || '').trim();
+                    if (t.length < 10 || t.length > 1000) continue;
+                    if (s.closest('a')) continue;
+                    if (/^\d/.test(t) && /followers|following|posts/i.test(t)) continue;
+                    return t;
+                }
+                return null;
+            """)
+            if bio is not None and not isinstance(bio, str):
+                bio = None
+            elif isinstance(bio, str) and not bio.strip():
+                bio = None
+        except Exception:
+            bio = None
+
         counts = parse_profile_from_meta(og_desc)
 
         # og:title: "Full Name (@username) • Instagram photos and videos"
@@ -373,7 +478,7 @@ class InstaExtractor:
             username=profile_id,
             url=url,
             full_name=full_name,
-            bio=None,
+            bio=bio,
             followers_count=counts.get('followers_count'),
             following_count=counts.get('following_count'),
             posts_count=counts.get('posts_count'),
@@ -383,7 +488,10 @@ class InstaExtractor:
             _extractor=self,
         )
 
-    def get_followers(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
+    def get_followers(self, profile_id: str,
+                      max_duration: Optional[float] = None,
+                      should_stop=None,
+                      with_metadata: bool = False):
         """Returns a list of followers for the given profile id.
 
         max_duration: segundos de budget via `time.perf_counter`. No
@@ -391,17 +499,48 @@ class InstaExtractor:
           extração através de um ciclo sleep/wake do notebook dispara
           max_duration imediatamente ao acordar. Evite rodar
           overnight em laptops sem inibir o sono.
+        should_stop: callable opcional `() -> bool`. Quando True, o
+          loop de extração para graciosamente após o batch corrente.
+          Útil pra "parar quando achei N candidatos eligíveis":
+
+              found = []
+              def stop_when_enough():
+                  return len(found) >= 100
+              followers = ext.get_followers(
+                  "target", should_stop=stop_when_enough,
+              )
+              # consumer popula `found` via on_batch ou pós-processa
+        with_metadata: quando True, retorna List[ProfileSummary] em vez
+          de List[str]. ProfileSummary inclui user_id, full_name,
+          is_verified, is_private, is_business, profile_pic_url —
+          tudo que a API privada do IG entrega per-follower. Requer
+          httpx no cascade pra valor real (Selenium/Playwright degradam
+          pra ProfileSummary username-only).
+          NOTA: em with_metadata mode a partial preservation cross-engine
+          é desabilitada (limitação documentada — primeiro engine que
+          completa ganha; falha total ainda raise AllEnginesBlockedError).
         """
         _validate_profile_id(profile_id)
-        return self._extract_with_export(profile_id, 'followers', max_duration)
+        return self._extract_with_export(
+            profile_id, 'followers', max_duration,
+            should_stop=should_stop,
+            with_metadata=with_metadata,
+        )
 
-    def get_following(self, profile_id: str, max_duration: Optional[float] = None) -> List[str]:
+    def get_following(self, profile_id: str,
+                      max_duration: Optional[float] = None,
+                      should_stop=None,
+                      with_metadata: bool = False):
         """Returns a list of accounts that the given profile id is following.
 
-        max_duration: ver nota em `get_followers`.
+        max_duration / should_stop / with_metadata: ver `get_followers`.
         """
         _validate_profile_id(profile_id)
-        return self._extract_with_export(profile_id, 'following', max_duration)
+        return self._extract_with_export(
+            profile_id, 'following', max_duration,
+            should_stop=should_stop,
+            with_metadata=with_metadata,
+        )
 
     def _extract_until_complete(self, profile_id: str, list_type: str,
                                 target_fraction: float, max_retries: int,
@@ -918,6 +1057,35 @@ class InstaExtractor:
         return self._parallel(profile_id, 'following', workers, accounts,
                               stop_threshold, max_duration, headless)
 
+    def set_worker(self, username: str, password: str,
+                   *, proxy: Optional[str] = None) -> None:
+        """Register a pre-authenticated parallel worker.
+
+        Performs ONE login now and keeps the browser alive for future
+        `get_followers_parallel` / `get_following_parallel` calls.
+        Call multiple times to add more workers; the next parallel
+        extraction uses them all. Use `clear_workers()` to shut them
+        down when you're done.
+
+        Why this matters: each parallel call used to re-login every
+        worker (~30s each + flags IG). With `set_worker`, logins
+        happen once and sessions live across extractions."""
+        if self._worker_pool is None:
+            self._worker_pool = WorkerPool(
+                headless=self._headless,
+                timeout=self.timeout,
+                imap_config=self._imap_config,
+            )
+        self._worker_pool.add_worker(username, password, proxy=proxy)
+
+    def clear_workers(self) -> None:
+        """Shut down every worker registered via `set_worker`.
+
+        Call on teardown; otherwise browser processes linger until the
+        Python process exits."""
+        if self._worker_pool is not None:
+            self._worker_pool.clear()
+
     def _parallel(self, profile_id: str, list_type: str, workers: int,
                   accounts, stop_threshold, max_duration, headless) -> List[str]:
         try:
@@ -925,6 +1093,9 @@ class InstaExtractor:
         except ImportError:
             from parallel import parallel_extract
         target = self.get_total_count(profile_id, list_type)
+        preloaded = (
+            self._worker_pool.engines() if self._worker_pool else None
+        )
         try:
             result = parallel_extract(
                 profile_id, list_type,
@@ -936,6 +1107,7 @@ class InstaExtractor:
                 max_duration=max_duration,
                 headless=headless,
                 timeout=self.timeout,
+                preloaded_engines=preloaded,
             )
         except Exception as e:
             logger.warning(f"parallel extraction failed ({e}); falling back to sequential")
@@ -1049,10 +1221,74 @@ class InstaExtractor:
         _validate_profile_id(profile_id)
         return self._engine_manager.get_total_count(profile_id, list_type)
 
+    def get_followers_with_metrics(self, profile_id: str,
+                                   max_duration: Optional[float] = None,
+                                   should_stop=None,
+                                   with_metadata: bool = False):
+        """Como get_followers, mas envolve o resultado em ExtractionResult
+        com telemetria operacional (engine_used, sessions_used, duration,
+        rate_limit_hits, partial flag, coverage_pct, block_predictor_score).
+
+        Pipeline pode gravar `result.to_dict()` em coluna JSON do BigQuery
+        pra ter audit log sem parsear loguru.
+        """
+        _validate_profile_id(profile_id)
+        kwargs: dict = {}
+        if should_stop is not None:
+            kwargs['should_stop'] = should_stop
+        if with_metadata:
+            kwargs['with_metadata'] = True
+        return self._engine_manager.extract_with_metrics(
+            profile_id, 'followers',
+            max_duration=max_duration,
+            **kwargs,
+        )
+
+    def get_following_with_metrics(self, profile_id: str,
+                                   max_duration: Optional[float] = None,
+                                   should_stop=None,
+                                   with_metadata: bool = False):
+        """Idem `get_followers_with_metrics` para following."""
+        _validate_profile_id(profile_id)
+        kwargs: dict = {}
+        if should_stop is not None:
+            kwargs['should_stop'] = should_stop
+        if with_metadata:
+            kwargs['with_metadata'] = True
+        return self._engine_manager.extract_with_metrics(
+            profile_id, 'following',
+            max_duration=max_duration,
+            **kwargs,
+        )
+
+    def get_recent_posts(self, profile_id: str, limit: int = 5) -> list:
+        """Retorna até `limit` posts recentes do perfil com métricas
+        agregadas de engajamento (likes/comments/timestamp/caption/
+        hashtags/media_url).
+
+        Usa cascade de engines via EngineManager. HttpxEngine é a única
+        engine que implementa hoje (via API privada /feed/user/);
+        Selenium/Playwright são puladas via NotImplementedError. Inclua
+        httpx no `engines=[...]` do construtor pra habilitar:
+
+            ext = InstaExtractor(u, p, engines=["selenium", "httpx"])
+            posts = ext.get_recent_posts("target_profile", limit=5)
+            # posts: List[PostMetrics] — ver instat.post_metrics
+
+        Calcular TEP (Taxa de Engajamento por Post) fica com o
+        consumidor (essa é responsabilidade analítica, não de extração).
+        """
+        _validate_profile_id(profile_id)
+        if not 1 <= limit <= 50:
+            raise ValueError(f"limit must be in [1, 50], got {limit}")
+        return self._engine_manager.get_recent_posts(profile_id, limit)
+
     def _extract_with_export(self, profile_id: str, list_type: str,
                              max_duration: Optional[float],
                              _exclude_engines=None,
-                             _rate_limit_sink=None) -> List[str]:
+                             _rate_limit_sink=None,
+                             should_stop=None,
+                             with_metadata: bool = False):
         """Extrai e, se self._exporter configurado, exporta com metadata.
 
         _exclude_engines / _rate_limit_sink: kwargs internos usados por
@@ -1060,6 +1296,8 @@ class InstaExtractor:
         rate-limit repetido e observar quais engines continuam dando
         rate-limit nesta iteração. Underscore-prefixed porque não
         são API pública — não documentar fora daqui.
+
+        should_stop: API pública pra early stop (ver get_followers).
         """
         start_ts = time.time()
         start_perf = time.perf_counter()
@@ -1068,6 +1306,10 @@ class InstaExtractor:
             extract_kwargs['exclude_engines'] = _exclude_engines
         if _rate_limit_sink is not None:
             extract_kwargs['rate_limit_sink'] = _rate_limit_sink
+        if should_stop is not None:
+            extract_kwargs['should_stop'] = should_stop
+        if with_metadata:
+            extract_kwargs['with_metadata'] = True
         result = self._engine_manager.extract(
             profile_id, list_type, max_duration=max_duration,
             **extract_kwargs,
@@ -1162,8 +1404,10 @@ class InstaExtractor:
         return total
 
     def quit(self) -> None:
-        """Closes the underlying WebDriver instance."""
+        """Closes the underlying WebDriver instance and any persistent
+        parallel workers registered via `set_worker`."""
         self._engine_manager.quit_all()
+        self.clear_workers()
 
 
 if __name__ == '__main__':

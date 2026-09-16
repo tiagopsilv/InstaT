@@ -156,10 +156,21 @@ class FormLogin:
     def __init__(
         self, selector_loader: Any, base_url: str,
         timeout: int = 10,
+        diagnostics: Any = None,
     ) -> None:
         self._selectors = selector_loader
         self._base_url = base_url
         self._timeout = timeout
+        self._diagnostics = diagnostics
+
+    def _dx(self, driver: Any, event: str, *, exc: Any = None, context: Any = None) -> None:
+        """Capture a diagnostic bundle if a collector is wired. Never raises."""
+        if self._diagnostics is None:
+            return
+        try:
+            self._diagnostics.capture(driver, event=event, exc=exc, context=context)
+        except Exception as e:
+            logger.debug(f"FormLogin: diagnostics capture failed: {e}")
 
     @property
     def login_url(self) -> str:
@@ -171,7 +182,7 @@ class FormLogin:
         """Run the form flow. Raises Exception on hard failure."""
         self._open_login_page(driver)
         username_input, password_input = self._wait_for_form_fields(driver)
-        self._fill_and_submit(username_input, password_input, username, password)
+        self._fill_and_submit(driver, username_input, password_input, username, password)
         # The "Ignorar" bar sometimes appears. Dismiss it if present.
         Utils.click_ignore_button_if_present(
             driver, timeout=5, wait_before_click=1,
@@ -205,17 +216,20 @@ class FormLogin:
             return username_input, password_input
         except TimeoutException as e:
             logger.exception("Timeout waiting for login form elements")
+            self._dx(driver, "form_fields_timeout", exc=e,
+                     context={"timeout_s": self._timeout})
             raise Exception(
                 "Login failed: Timeout waiting for login form elements."
             ) from e
         except WebDriverException as e:
             logger.exception("Error locating login form elements")
+            self._dx(driver, "form_fields_webdriver_error", exc=e)
             raise Exception(
                 "Login failed: WebDriver error during element location."
             ) from e
 
-    @staticmethod
     def _fill_and_submit(
+        self, driver: Any,
         username_input: Any, password_input: Any,
         username: str, password: str,
     ) -> None:
@@ -228,6 +242,7 @@ class FormLogin:
             password_input.send_keys(Keys.RETURN)
         except WebDriverException as e:
             logger.exception("Error entering credentials")
+            self._dx(driver, "credentials_send_keys_failed", exc=e)
             raise Exception("Login failed: Unable to enter credentials.") from e
 
     def _wait_for_redirect_or_fallback_click(self, driver: Any) -> None:
@@ -243,6 +258,9 @@ class FormLogin:
             return
         except TimeoutException:
             logger.debug("Login via RETURN key failed, trying fallback button click...")
+            self._dx(driver, "login_return_key_no_redirect",
+                     context={"login_url": login_url,
+                              "timeout_s": self._timeout})
             self._fallback_button_click(driver)
 
     def _fallback_button_click(self, driver: Any) -> None:
@@ -270,9 +288,12 @@ class FormLogin:
                 except Exception as e:
                     logger.debug(f"Skipping one candidate button due to error: {e}")
             logger.error("No login button matched expected keywords.")
+            self._dx(driver, "fallback_click_no_button_matched",
+                     context={"candidates_found": len(candidates)})
             raise Exception("Login failed: No suitable login button found.")
         except Exception as e:
             logger.exception("Fallback login button click failed")
+            self._dx(driver, "fallback_click_failed", exc=e)
             raise Exception(
                 "Login failed: Unable to login using fallback method."
             ) from e
