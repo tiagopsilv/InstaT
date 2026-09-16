@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-
 # Hashtag pattern: # followed by letters/digits/underscores; supports
 # accented characters and emoji-adjacent forms. Lowercased for dedup.
 _HASHTAG_RE = re.compile(r'#([\wÀ-ſ][\wÀ-ſ]*)', re.UNICODE)

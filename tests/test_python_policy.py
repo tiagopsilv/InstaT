@@ -72,3 +72,11 @@ def test_readme_states_312():
 def test_dockerfile_uses_312_or_newer():
     m = re.search(r"^FROM python:(\d+\.\d+)", (ROOT / "Dockerfile").read_text(encoding="utf-8"), re.M)
     assert m and _v(m.group(1)) >= MIN
+
+
+def test_stealth_extra_ships_distutils_shim():
+    """undetected-chromedriver 3.5.5 faz `from distutils.version import LooseVersion`;
+    distutils saiu do Python 3.12. Sem setuptools (que fornece a camada de
+    compatibilidade), o extra `stealth` não importa no piso aprovado."""
+    stealth = PYPROJECT["project"]["optional-dependencies"]["stealth"]
+    assert any(re.match(r"setuptools\b", dep) for dep in stealth), stealth

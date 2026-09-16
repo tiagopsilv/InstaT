@@ -84,6 +84,7 @@ def test_build_engines_recognizes_mobile_names():
 
 def test_build_engines_mixed_cascade_keeps_existing_engines():
     """Mistura mobile + httpx: os nomes novos não atrapalham os antigos."""
+    pytest.importorskip("httpx", reason="extra opcional httpx não instalado")
     ext = InstaExtractorNoInit()
     built = ext._build_engines(
         ["mobile_api", "android_ui", "httpx"], headless=True, timeout=10

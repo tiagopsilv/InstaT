@@ -2,20 +2,21 @@
 Engines mobile — stubs que já implementam o contrato BaseEngine.
 
 Ainda NÃO funcionais: `login`/`extract`/`get_total_count` levantam
-NotImplementedError citando a fase que os implementa. A escolha de falhar
-alto (em vez de retornar dado falso) é o princípio nº 3 do roadmap:
-"falhar para humano, não para retry".
+NotImplementedError citando a fase do roadmap que os implementa. A escolha
+de falhar alto (em vez de retornar dado falso) é o princípio nº 3 do
+roadmap: "falhar para humano, não para retry".
 
 Por que já existem como stubs:
-  - travam o contrato público (§3.1): os nomes 'mobile_api'/'android_ui'
+  - travam o contrato público: os nomes 'mobile_api'/'android_ui'
     passam a ser reconhecidos por InstaExtractor._build_engines;
-  - dão o alvo do TDD das Fases 1 e 5.
+  - dão o alvo do TDD das fases F7 (UI Android) e F8 (API móvel).
 
 `is_available` é True (a classe é importável, sem dependências pesadas),
 então a cascata reconhece o nome; a indisponibilidade real aparece só ao
-tentar usar, com mensagem clara. Enquanto não implementadas, use-as sempre
-ATRÁS de um engine funcional na cascata, p.ex.
-`engines=["mobile_api", "android_ui", "selenium", "httpx"]`.
+tentar usar, com mensagem clara. Usados como engine primária, o
+InstaExtractor falha já na construção. Enquanto não implementadas, use-as
+sempre ATRÁS de um engine funcional na cascata, p.ex.
+`engines=["selenium", "httpx", "mobile_api", "android_ui"]`.
 """
 from __future__ import annotations
 
@@ -33,25 +34,25 @@ class _StubMobileEngine(BaseEngine):
     _NAME: str = "mobile"
     _PHASE: str = "?"
 
-    def _not_yet(self, what: str) -> "NotImplementedError":
+    def not_implemented_error(self, what: str) -> NotImplementedError:
         return NotImplementedError(
             f"{type(self).__name__}.{what} ainda não implementado — "
             f"ver Fase {self._PHASE} do docs/ROADMAP_MOBILE.md. "
-            f"Até lá, coloque '{self._NAME}' atrás de um engine funcional "
-            f"na cascata (ex.: selenium/httpx)."
+            f"Não use '{self._NAME}' como engine primária; até lá, coloque-o "
+            f"atrás de um engine funcional na cascata (ex.: selenium/httpx)."
         )
 
     def login(self, username: str, password: str, **kwargs) -> bool:
-        raise self._not_yet("login")
+        raise self.not_implemented_error("login")
 
     def extract(self, profile_id: str, list_type: str,
                 existing_profiles: Optional[Set[str]] = None,
                 max_duration: Optional[float] = None,
                 on_batch: Optional[Callable] = None) -> Set[str]:
-        raise self._not_yet("extract")
+        raise self.not_implemented_error("extract")
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
-        raise self._not_yet("get_total_count")
+        raise self.not_implemented_error("get_total_count")
 
     def quit(self) -> None:
         # Nada a liberar num stub.
@@ -67,22 +68,22 @@ class _StubMobileEngine(BaseEngine):
 
 
 class MobileApiEngine(_StubMobileEngine):
-    """Extração em volume pela API privada móvel (curl_cffi, TLS do app).
+    """Extração pela API privada móvel por adapter mantido.
 
-    Implementada na Fase 5 (handoff de sessão app→API) sobre a identidade
-    do DeviceProfile e o fingerprint TLS da Fase 4.
+    Experimento condicional da fase F8 do roadmap, só com necessidade
+    demonstrada pelos resultados da F7.
     """
     _NAME = "mobile_api"
-    _PHASE = "5"
+    _PHASE = "F8"
 
 
 class AndroidUiEngine(_StubMobileEngine):
-    """Automação do app oficial no container Android via uiautomator2.
+    """Automação do app oficial no Android em container, somente leitura.
 
-    Implementada nas Fases 1 (boot/login) e 6 (comportamento humano).
+    Implementada na fase F7 do roadmap, a partir da fatia vertical F6b.
     """
     _NAME = "android_ui"
-    _PHASE = "1"
+    _PHASE = "F7"
 
 
 # Nomes reconhecidos por InstaExtractor._build_engines como engines mobile.

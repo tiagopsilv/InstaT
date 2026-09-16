@@ -4,6 +4,7 @@ These tests pin the BD URL format and the SeleniumEngine page-load
 strategy fix learned from the live smoke test (2026-05-14). If any of
 these break, look at BD's docs first — they may have changed
 host/port/path conventions."""
+import importlib.util
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -197,6 +198,7 @@ class TestProvidersIntegrateWithExtractor(unittest.TestCase):
     """End-to-end: a BD engine returned by the helper plugs into
     InstaExtractor(engines=[...]) without further setup."""
 
+    @unittest.skipUnless(importlib.util.find_spec("playwright"), "extra opcional playwright não instalado")
     def test_brightdata_engine_accepted_in_engines_list(self):
         from unittest.mock import patch
         from instat.extractor import InstaExtractor

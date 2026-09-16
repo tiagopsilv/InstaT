@@ -20,8 +20,12 @@ __pycache__/
 instat/logs/artifacts/
 instat/logs/
 
-# Egg info
+# Egg info e artefatos de build/ambientes locais
 *.egg-info/
+build/
+dist/
+.venv*/
+venv*/
 # Manual real-run helpers (credentials live outside repo)
 _real_*.py
 _real_run.log
