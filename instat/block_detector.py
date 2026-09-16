@@ -81,6 +81,10 @@ class BlockDetector:
             "Atividade suspeita detectada",
             "Faça login manual no navegador para desbloquear a conta.",
         ),
+        'suspended': (
+            "Conta suspensa",
+            "Abra o Instagram no navegador e siga o fluxo de contestação.",
+        ),
         'consent': (
             "Consentimento obrigatório (GDPR/termos)",
             "Aceite os termos de uso no navegador manualmente.",

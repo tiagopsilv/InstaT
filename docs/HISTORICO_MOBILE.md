@@ -11,6 +11,9 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | 16/09/2026 | F6b (fatia vertical Android) e sua posição na ordem | limiares da fase continuam proposta | roadmap v13.3 |
 | 16/09/2026 | Solução C (conceito) para páginas recebidas | aprovação de direção, não do SQL | roadmap v13.5 |
 | 16/09/2026 | Rodada de decisões: MVP de um slot; ordem das fases; Python ≥ 3.12; publicação de branches de revisão e PRs em rascunho (sem push em `main`, force-push, merge ou release); resultado e histórico; limites operacionais | **não amplia teto de tráfego pago nem autoriza contas adicionais** | roadmap v13.7 |
+| 16/09/2026 | F1 liberada em paralelo ao bloqueio da F6a | sem conta real nem tráfego (a F1 usa só fakes) | resposta do Tiago nesta sessão |
+| 16/09/2026 | F6a: fonte do APK = imagem de emulador com Play Store; tradução ARM = **não usar**, avaliar alternativa | **conflito aberto**: as imagens x86_64 do emulador dependem de tradução ARM, a menos que a Play entregue uma variante x86_64 do Instagram (hipótese não verificada, que exige login com conta Google, ou seja, um aval com teto). Alternativas: host ARM64 ou dispositivo físico | resposta do Tiago nesta sessão |
+| 16/09/2026 | Trailers `Claude-Session` nos commits já publicados: manter como estão | sem reescrita de histórico | resposta do Tiago nesta sessão |
 
 **Consequência prática:** como nenhum teto de tráfego pago nem lista de contas foi registrado, qualquer fase que use tráfego pago ou conta real precisa citar essa lacuna na pré-análise e pedir aval com teto antes de executar.
 
@@ -28,10 +31,10 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 
 | Fase | Status | Início | Fim | Evidência | Commits / PR |
 |---|---|---|---|---|---|
-| F0 | **entregue — sete passos executados; aceite de CI pendente** | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-0/` | branch `f0/python312-packaging` |
-| F6a | **bloqueada (passo 3)**: fonte do APK e conformidade do uso da tradução ARM dependem do Tiago; redroid exige kernel WSL customizado | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
+| F0 | **entregue — aceite de CI ok**: run 35148419267 com lint, 3.12, 3.13 (na reexecução; a 1ª falha foi rate limit do webdriver-manager, corrigido na F1) e build/smoke do wheel | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-0/` | `b06443d`; PR #3 (rascunho); PR #4 de CI fechado sem merge |
+| F6a | **bloqueada (passo 3)**: APK via Play Store decidido, mas tradução ARM vetada → conflito (ver Autorizações); redroid exige kernel WSL customizado | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
 | F6b | bloqueada por dependência (F6a) | — | — | — | — |
-| F1 | **não iniciada — aguarda confirmação:** a ordem aprovada põe F1 depois de F6b, que está bloqueada | — | — | — | — |
+| F1 | **entregue — sete passos executados; CI ok** (run 35152282343: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-1/` | `923a9ad` (testes vermelhos), `5255349` (implementação); PR #5 (rascunho, base F0); PR #6 de CI fechado sem merge |
 | F2, F5, F3, F6, F7 | não iniciadas | — | — | — | — |
 | F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 

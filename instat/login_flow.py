@@ -30,7 +30,7 @@ Kept out of these classes:
 This separation means IG changes in one area touch only the file
 for that area.
 """
-from typing import Any, List
+from typing import Any, List, Optional
 
 from loguru import logger
 from selenium.common.exceptions import (
@@ -44,9 +44,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 try:
     from instat.constants import LOGIN_POST_CLICK_DELAY, human_delay
+    from instat.session_validation import RestoreOutcome, classify_restored_session
     from instat.utils import Utils
 except ImportError:
     from constants import LOGIN_POST_CLICK_DELAY, human_delay  # type: ignore
+    from session_validation import RestoreOutcome, classify_restored_session  # type: ignore
     from utils import Utils  # type: ignore
 
 
@@ -57,19 +59,25 @@ class SessionRestorer:
     and skip the form entirely. This is both faster (~2s vs ~30s) and
     less suspicious to IG (re-logging in frequently is a flag).
 
-    Success criteria (both must hold):
-      - after refresh, URL does NOT contain '/accounts/login'
+    Success criteria (all must hold — see session_validation):
+      - after refresh, URL is neither login nor a block state
+        (challenge, checkpoint, suspended, …)
       - `sessionid` cookie is present on the driver
-    Either failure → delete all cookies from driver and return False
-    so caller does a clean form-login.
+      - `ds_user_id` matches the cached identity, when known
+    Failure → return False; `last_outcome` tells the caller why.
+    Cookies are cleared except on BLOCKED, where the caller must
+    inspect the page (no form retry on a challenge).
     """
 
     LOGIN_URL_MARKER = '/accounts/login'
 
     def __init__(self, base_url: str) -> None:
         self._base_url = base_url
+        self.last_outcome: RestoreOutcome = RestoreOutcome.NO_COOKIES
 
-    def attempt(self, driver: Any, cookies: List[dict]) -> bool:
+    def attempt(self, driver: Any, cookies: List[dict],
+                expected_ds_user_id: Optional[str] = None) -> bool:
+        self.last_outcome = RestoreOutcome.NO_COOKIES
         if not cookies:
             return False
         try:
@@ -78,18 +86,28 @@ class SessionRestorer:
             if added == 0:
                 return False
             driver.refresh()
-            if self._stuck_on_login(driver):
-                self._clear_cookies(driver)
-                return False
-            if not self._has_sessionid(driver):
-                self._clear_cookies(driver)
-                return False
-            logger.info('Session restored from cookie cache.')
-            return True
+            self.last_outcome = classify_restored_session(
+                driver.current_url, lambda n: self._cookie_value(driver, n),
+                expected_ds_user_id,
+            )
         except Exception as e:
             logger.debug(f'Failed to restore session from cache: {e}')
+            self.last_outcome = RestoreOutcome.ERROR
+        if self.last_outcome is RestoreOutcome.OK:
+            logger.info('Session restored from cookie cache.')
+            return True
+        logger.debug(f'Cookie restore rejected: {self.last_outcome.value}')
+        if self.last_outcome is not RestoreOutcome.BLOCKED:
             self._clear_cookies(driver)
-            return False
+        return False
+
+    @staticmethod
+    def _cookie_value(driver: Any, name: str) -> Optional[str]:
+        try:
+            c = driver.get_cookie(name)
+        except Exception:
+            return None
+        return (c or {}).get('value') if isinstance(c, dict) else (c and str(c))
 
     @staticmethod
     def _add_cookies(driver: Any, cookies: List[dict]) -> int:

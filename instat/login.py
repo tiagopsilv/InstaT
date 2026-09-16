@@ -38,6 +38,12 @@ try:
 except ImportError:
     from diagnostics import DiagnosticCollector  # type: ignore
 try:
+    from instat.session_validation import RestoreOutcome
+    from instat.user_agents import mobile_user_agent
+except ImportError:
+    from session_validation import RestoreOutcome  # type: ignore
+    from user_agents import mobile_user_agent  # type: ignore
+try:
     from instat.login_flow import FormLogin, SessionRestorer
 except ImportError:
     from login_flow import FormLogin, SessionRestorer  # type: ignore
@@ -201,11 +207,7 @@ class InstaLogin:
             ) from e
         logger.debug("Setting up undetected Chrome options")
         options = uc.ChromeOptions()
-        mobile_user_agent = (
-            "Mozilla/5.0 (Linux; Android 8.0; Nexus 5 Build/OPR6.170623.013) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36"
-        )
-        options.add_argument(f"--user-agent={mobile_user_agent}")
+        options.add_argument(f"--user-agent={mobile_user_agent('chromium')}")
         # Mobile-sized viewport matches InstaT's mobile selector set.
         options.add_argument("--window-size=375,667")
         # Block images for bandwidth (matches Firefox preference path).
@@ -260,11 +262,9 @@ class InstaLogin:
 
         logger.debug("Setting up Firefox options with mobile user agent")
         options = webdriver.FirefoxOptions()
-        mobile_user_agent = (
-            "Mozilla/5.0 (Linux; Android 8.0; Nexus 5 Build/OPR6.170623.013) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36"
-        )
-        options.set_preference("general.useragent.override", mobile_user_agent)
+        # Gecko engine → Firefox-for-Android UA (a Chrome UA here is
+        # inconsistent with what the browser itself exposes).
+        options.set_preference("general.useragent.override", mobile_user_agent('firefox'))
 
         # Performance: skip heavy resources not used by selectors.
         # Reduces per-navigation time by 30-50%.
@@ -340,6 +340,8 @@ class InstaLogin:
         Detecção e reação separadas — mudanças nos padrões do IG tocam
         apenas block_detector.py.
         """
+        if getattr(self, '_block_detector', None) is None:
+            self._block_detector = BlockDetector()
         info = self._block_detector.check(driver)
         if info is None:
             return
@@ -470,8 +472,16 @@ class InstaLogin:
         driver = self.driver
 
         # Phase 1: restore from cookie cache (fast path, preferred).
+        # A restored page still goes through the BlockDetector: a
+        # challenge/checkpoint raises here and never retries the form.
         if self._try_cookie_restore(driver):
+            self._check_account_blocked(driver)
+            touch = getattr(self._session_cache, 'touch', None)
+            if callable(touch):
+                touch(self.username)
             return True
+        if self._get_session_restorer().last_outcome is RestoreOutcome.BLOCKED:
+            self._check_account_blocked(driver)
 
         # Phase 2: classic form login.
         self._get_form_login().execute(driver, self.username, self.password)
@@ -500,10 +510,18 @@ class InstaLogin:
     def _try_cookie_restore(self, driver) -> bool:
         if not self._session_cache:
             return False
+        restorer = self._get_session_restorer()
+        restorer.last_outcome = RestoreOutcome.NO_COOKIES
         cookies = self._session_cache.load(self.username)
         if not cookies:
             return False
-        return self._session_restorer.attempt(driver, cookies)
+        # Caches injetados podem não conhecer identidade (API v1).
+        expected = getattr(self._session_cache, 'expected_ds_user_id', None)
+        expected = expected(self.username) if callable(expected) else None
+        return restorer.attempt(
+            driver, cookies,
+            expected_ds_user_id=expected if isinstance(expected, str) else None,
+        )
 
 if __name__ == '__main__':
     # Replace 'your_username' and 'your_password' with your actual credentials

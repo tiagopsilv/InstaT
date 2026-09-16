@@ -1,0 +1,40 @@
+﻿
+=== A. SessionCache
+  json_truncado    -> exceção JSONDecodeError
+  sem_saved_at     -> exceção KeyError
+  saved_at_texto   -> exceção TypeError
+  cookies_string   -> retornou str
+  saved_at_futuro  -> retornou list
+  idade == 3600 s    -> [1] (aceito na fronteira)
+  idade == 3601 s    -> None
+  diretório padrão depende do cwd: True e True (dois caches diferentes)
+  escrita atômica (os.replace/rename no save): False
+
+=== B. SessionRestorer (Selenium) e restauração do Playwright
+  /challenge/abc/               -> sucesso=True  <- FALSO POSITIVO
+  /checkpoint/                  -> sucesso=True  <- FALSO POSITIVO
+  /accounts/suspended/          -> sucesso=True  <- FALSO POSITIVO
+  /auth_platform/codeentry/     -> sucesso=True  <- FALSO POSITIVO
+  /accounts/login/              -> sucesso=False
+  /                             -> sucesso=True
+  cookies de OUTRO usuário (ds_user_id diferente do esperado) -> sucesso=True (sem validação de identidade)
+  falsos positivos de estado: 4 de 4 estados de bloqueio
+  Playwright: restauração decide só por URL: True; confere sessionid: False
+
+=== C. InstaLogin.login(): restauração com challenge
+  login() retornou True; BlockDetector chamado: False; formulário aberto: False
+
+=== D. User-Agent
+  Selenium/Firefox (Gecko) declara UA: Mozilla/5.0 (Linux; Android 8.0; Nexus 5 Build/OPR6.170623.013) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36
+  UA contém 'Firefox': False; contém 'Chrome': True  <- incoerente com o motor Gecko
+  Playwright browser_type=chromium  usa o mesmo MOBILE_UA (Chrome 89/Android 8): True
+  Playwright browser_type=firefox   usa o mesmo MOBILE_UA (Chrome 89/Android 8): True
+  Playwright browser_type=webkit    usa o mesmo MOBILE_UA (Chrome 89/Android 8): True
+
+=== E. Logins de formulário em 10 reinícios (fakes, sem rede)
+  reinícios a cada 10 min (sessão com < 1 h): formulários abertos = 1 de 10
+  reinícios a cada 2 h (cache descartado por idade): formulários abertos = 10 de 10
+
+=== F. Testes 'offline' que chamam o webdriver-manager (rede)
+  tests/test_login.py substitui webdriver.Firefox: True; substitui GeckoDriverManager: False
+  CI do PR #4 (3.13): 5 falhas 'webdriver-manager rate-limited' nesses testes

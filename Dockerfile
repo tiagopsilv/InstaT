@@ -33,5 +33,8 @@ RUN useradd --create-home --shell /bin/bash instat && \
 
 USER instat
 
+# Cache de sessão no volume montado pelo docker-compose
+ENV INSTAT_SESSION_DIR=/app/.instat_sessions
+
 ENTRYPOINT ["python", "-m", "instat"]
 CMD ["--help"]

@@ -14,6 +14,15 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
 - **Extra `stealth` em Python 3.12:** `undetected-chromedriver` 3.5.5 importa `distutils`, removido do Python 3.12, e falhava com `ModuleNotFoundError`. O extra passa a declarar `setuptools>=60`, que fornece a camada de compatibilidade. Só a importação foi verificada; o modo stealth em execução exige Chrome e não foi testado.
 - **Teste que abria navegador real:** `test_account_rotation.py::test_inherits_imap_config_engines_timeout` usava `patch(..., side_effect=InstaExtractor)`, construindo o extractor real — abria um Firefox visível, tentava login com credenciais falsas e deixava o navegador aberto, travando quem aguardava a saída da suíte. Agora o mock só captura os argumentos.
 - **`ruff`:** cinco erros que já existiam antes desta mudança (ordem de imports em `diagnostics.py`, `logging_config.py` e `post_metrics.py`; variável não usada e `lambda` atribuída em `tests/test_recent_gaps.py`) corrigidos, para o job de lint passar.
+- **Sessão restaurada em challenge contava como login válido (F1).** O `SessionRestorer` só verificava se a página saía de `/accounts/login`, e o `login()` pulava o `BlockDetector`. Agora a restauração exige URL limpa, `sessionid` e o mesmo `ds_user_id` salvo. Em bloqueio, levanta `AccountBlockedError`/`BlockedError` sem tentar o formulário. O Playwright usa a mesma validação.
+- **Cache de sessão (F1):**
+  - Arquivo inválido vira cache miss em vez de exceção, e o TTL expira na fronteira.
+  - A escrita passou a ser atômica.
+  - Uma restauração validada renova a idade. Antes, reinícios frequentes forçavam um novo login a cada hora.
+  - O diretório padrão passa a ser `INSTAT_SESSION_DIR` ou `~/.instat/sessions`, com leitura do antigo `.instat_sessions` do cwd. A imagem Docker fixa `INSTAT_SESSION_DIR=/app/.instat_sessions`.
+  - O formato v2 registra `username`, `ds_user_id` e `backend` (este último só no Playwright). O v1 continua legível.
+- **User-Agent incoerente (F1):** o Firefox (Selenium e Playwright) declarava Chrome 89/Android 8. Agora cada motor usa um UA da própria família (Chrome, Firefox, Safari/iOS).
+- **Testes de login sem rede (F1):** `tests/test_login.py` consultava o webdriver-manager (API do GitHub) e falhava por rate limit no CI. O marcador `real` foi registrado, é opt-in por `INSTAT_REAL_TESTS=1` e fica excluído do CI.
 
 ### Added
 - **Post metrics** — `extractor.get_recent_posts(profile_id, limit=N)` returns `List[PostMetrics]` (shortcode, likes_count, comments_count, timestamp, caption, hashtags, media_type, media_url) via `HttpxEngine` paginating the private `/feed/user/{user_id}/` endpoint. Feeds engagement formulas (TEP) without the consumer scraping post pages itself. Other engines raise `NotImplementedError` so the cascade falls through.

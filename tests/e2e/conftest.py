@@ -45,5 +45,7 @@ def fake_instagram():
 def reset_state():
     """Reset fake server state between tests."""
     STATE.mode = 'normal'
+    STATE.revoked_sessions.clear()
+    STATE.login_posts = 0
     yield
     STATE.mode = 'normal'
