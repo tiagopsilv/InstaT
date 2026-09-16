@@ -1,0 +1,34 @@
+﻿=== F0 passo 1 — 2026-09-16 16:03:14
+worktree=C:\Projetos\InstaT-wt-f0 HEAD=5b0b996f7c052367a3b0576e29a74886e3340a0c python=C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe
+--- 1. pip atualizado
+$ C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe -m pip install --upgrade pip -q
+    [exit 0]
+--- 2. dependências de desenvolvimento (editável)
+$ C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe -m pip install -e .[dev] -q
+    [exit 0]
+--- 3. suíte offline — baseline antes de qualquer mudança
+$ C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe -m pytest tests -m not e2e and not mobile -q -p no:cacheprovider
+    [32m2026-09-16T16:07:08.616271-0300[0m | [1mQuitting WebDriver.[0m
+    =========================== short test summary info ===========================
+    SKIPPED [1] tests\test_get_both.py:24: httpx not installed
+    SKIPPED [1] tests\test_get_both.py:7: httpx not installed
+    FAILED tests/mobile/test_contracts.py::test_build_engines_mixed_cascade_keeps_existing_engines
+    FAILED tests/test_providers.py::TestProvidersIntegrateWithExtractor::test_brightdata_engine_accepted_in_engines_list
+    [exit 1]
+--- 4. wheel do código atual
+$ C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe -m build --wheel --outdir C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\dist_before
+    
+    !!
+    [exit 0]
+    wheel=instat-1.0.2-py3-none-any.whl
+    pacotes=['instat', 'instat/config', 'instat/engines']
+    instat/mobile presente=False
+    arquivos em instat/logs=0
+    Requires-Python=['Requires-Python: >=3.9']
+--- 5. stub mobile como engine primária
+$ C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\venv312\Scripts\python.exe C:\Users\tiago\AppData\Local\Temp\claude\C--Projetos-InstaT\caf01432-7533-45d4-86c7-88be11ebe8ee\scratchpad\f0\repro_stub.py
+      File "[32mC:\Projetos\InstaT-wt-f0\instat\mobile\[0m[32m[1mengines.py[0m", line [33m45[0m, in [35mlogin[0m
+        [35m[1mraise[0m [1mself[0m[35m[1m.[0m[1m_not_yet[0m[1m([0m[36m"login"[0m[1m)[0m
+    [31m[1mNotImplementedError[0m:[1m AndroidUiEngine.login ainda não implementado — ver Fase 1 do docs/ROADMAP_MOBILE.md. Até lá, coloque 'android_ui' atrás de um engine funcional na cascata (ex.: selenium/httpx).[0m
+    [exit 0]
+=== fim 2026-09-16 16:40:27
