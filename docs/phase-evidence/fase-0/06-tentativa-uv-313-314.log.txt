@@ -1,0 +1,89 @@
+=== avaliação 3.13/3.14 — 2026-09-16 16:49:09
+
+--- instalar uv no venv de ferramentas [16:49:13]
+$ <scratchpad>\f0\venv_tools\Scripts\python.exe -m pip install uv -q
+    [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+    [notice] To update, run: <scratchpad>\f0\venv_tools\Scripts\python.exe -m pip install --upgrade pip
+    [exit 0 | 7.5s]
+
+--- versão do uv [16:49:20]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe --version
+    uv 0.12.15 (d35f1f270 2026-09-15 x86_64-pc-windows-msvc)
+    [exit 0 | 2.1s]
+
+--- diretório de interpretadores do uv [16:49:22]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe python dir
+    <uv>
+    [exit 0 | 0.0s]
+
+--- [3.13] instalar interpretador [16:49:22]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe python install 3.13
+    Downloading cpython-3.13.15-windows-x86_64-none (download) (20.9MiB)
+     Downloaded cpython-3.13.15-windows-x86_64-none (download)
+    Installed Python 3.13.15 in 6.59s
+     + cpython-3.13.15-windows-x86_64-none (python3.13.exe)
+    [exit 0 | 6.6s]
+
+--- [3.13] criar venv [16:49:29]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe venv --python 3.13 <scratchpad>\f0\venv313
+    Using CPython 3.13.15
+    Creating virtual environment at: <scratchpad>\f0\venv313
+    Activate with: <scratchpad>\f0\venv313\Scripts\activate
+    [exit 0 | 4.4s]
+
+--- [3.13] versão [16:49:33]
+$ <scratchpad>\f0\venv313\Scripts\python.exe --version
+    Python 3.13.15
+    [exit 0 | 0.7s]
+
+--- [3.13] instalar .[dev,httpx,playwright,stealth] [16:49:34]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe pip install --python <scratchpad>\f0\venv313\Scripts\python.exe -e .[dev,httpx,playwright,stealth]
+    Using Python 3.13.15 environment at: <scratchpad>\f0\venv313
+    error: Failed to build `undetected-chromedriver==3.5.5`
+      cause: Failed to run `<uv>
+      cause: Uma política de Controle de Aplicativo bloqueou este arquivo. (os error 4551)
+    
+    hint: `undetected-chromedriver` (v3.5.5) was included because `instat[stealth]` (v1.0.2) depends on `undetected-chromedriver>=3.5`
+    [exit 1 | 5.4s]
+    [3.13] instalação falhou — suíte não executada
+
+--- [3.14] instalar interpretador [16:49:39]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe python install 3.14
+    Downloading cpython-3.14.7-windows-x86_64-none (download) (21.7MiB)
+     Downloaded cpython-3.14.7-windows-x86_64-none (download)
+    Installed Python 3.14.7 in 5.75s
+     + cpython-3.14.7-windows-x86_64-none (python3.14.exe)
+    [exit 0 | 5.8s]
+
+--- [3.14] criar venv [16:49:45]
+$ <scratchpad>\f0\venv_tools\Scripts\uv.exe venv --python 3.14 <scratchpad>\f0\venv314
+    Using CPython 3.14.7
+    Creating virtual environment at: <scratchpad>\f0\venv314
+    Activate with: <scratchpad>\f0\venv314\Scripts\activate
+    [exit 0 | 4.0s]
+
+--- [3.14] versão [16:49:49]
+$ <scratchpad>\f0\venv314\Scripts\python.exe --version
+py : Traceback (most recent call last):
+No linha:3 caractere:1
++ py -3.12 -u "$f0\step6_pyversions.py" 2>&1 | Out-File -Encoding utf8  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "<scratchpad>\f0\
+step6_pyversions.py", line 44, in <module>
+    run(f"[{ver}] versão", [py, "--version"])
+  File "<scratchpad>\f0\
+step6_pyversions.py", line 23, in run
+    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=ENV)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python312>\Lib\subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<python312>\Lib\subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "<python312>\Lib\subprocess.py", line 1538, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [WinError 4551] Uma política de Controle de Aplicativo bloqueou este arquivo

@@ -1,0 +1,11 @@
+=== F0 — ciclo adicional (stealth em 3.12) — vermelho 2026-09-16 17:29:45 | pyproject ainda sem setuptools no extra stealth
+evidência que motivou: venv limpo 3.12 com wheel[stealth]: ModuleNotFoundError: No module named 'distutils' em undetected_chromedriver/patcher.py (17:28:38)
+F                                                                        [100%]
+================================== FAILURES ===================================
+E   AssertionError: ['undetected-chromedriver>=3.5']
+    assert False
+     +  where False = any(<generator object test_stealth_extra_ships_distutils_shim.<locals>.<genexpr> at 0x0000013F369197E0>)
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:82: AssertionError: ['undetected-chromedriver>=3.5']
+=========================== short test summary info ===========================
+FAILED tests/test_python_policy.py::test_stealth_extra_ships_distutils_shim
+1 failed in 0.02s

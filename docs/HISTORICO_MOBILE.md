@@ -14,14 +14,25 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 
 **Consequência prática:** como nenhum teto de tráfego pago nem lista de contas foi registrado, qualquer fase que use tráfego pago ou conta real precisa citar essa lacuna na pré-análise e pedir aval com teto antes de executar.
 
+## Conta de teste e credenciais
+
+- **Credenciais:** `C:\Projetos\instat_env.txt` (local, fora do repositório), lido por `tests/_env_loader.py`. Valores **nunca** entram neste histórico, em commits, PRs, logs ou prints.
+- **Regras para não bloquear a conta:** `docs/ROADMAP_MOBILE.md` §7.1 — sessão reaproveitada antes de login, no máximo uma tentativa de login por execução, parada imediata em challenge com resolução manual no app oficial, uma execução por vez, mesmo IP/dispositivo, testes reais opt-in e fora do CI.
+- **Estado conhecido da conta (evidência local, não verificada no Instagram):** comentário em `_real_features_smoke.py` indica restrição ("currently-flagged"); `_real_run.log` de 24/04/2026 terminou em `LoginError`. **Pendente:** verificação manual no app oficial antes do primeiro teste real.
+
+| Data | Verificação manual da conta no app oficial | Resultado | Quem |
+|---|---|---|---|
+| — | ainda não feita | — | — |
+
 ## Fases
 
 | Fase | Status | Início | Fim | Evidência | Commits / PR |
 |---|---|---|---|---|---|
-| F0 | em andamento (passo 3) | 16/09/2026 | — | `docs/phase-evidence/fase-0/` | — |
-| F6a | não iniciada | — | — | — | — |
-| F6b | não iniciada | — | — | — | — |
-| F1, F2, F5, F3, F6, F7 | não iniciadas | — | — | — | — |
+| F0 | **entregue — sete passos executados; aceite de CI pendente** | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-0/` | branch `f0/python312-packaging` |
+| F6a | **bloqueada (passo 3)**: fonte do APK e conformidade do uso da tradução ARM dependem do Tiago; redroid exige kernel WSL customizado | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
+| F6b | bloqueada por dependência (F6a) | — | — | — | — |
+| F1 | **não iniciada — aguarda confirmação:** a ordem aprovada põe F1 depois de F6b, que está bloqueada | — | — | — | — |
+| F2, F5, F3, F6, F7 | não iniciadas | — | — | — | — |
 | F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 
 ## Desvios registrados
