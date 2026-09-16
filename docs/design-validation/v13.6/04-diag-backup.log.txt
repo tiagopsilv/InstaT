@@ -1,0 +1,3 @@
+﻿mesma_conexao_begin_immediate              → TRAVOU (timeout 10 s)
+coordenador_immediate_backup_por_leitor    → OK origem=50 backup=50 iguais=True
+leitor_snapshot_begin_deferred             → OK origem=50 backup=50 iguais=True

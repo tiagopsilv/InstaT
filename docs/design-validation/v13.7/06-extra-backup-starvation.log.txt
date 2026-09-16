@@ -1,0 +1,3 @@
+﻿incremental 1 pág/passo, SEM escritor            status=ok       duração=0.27s passos=  102 heartbeats=0 falhas=0 pior=0.000s
+incremental 1 pág/passo, SÓ heartbeat (50 ms)    status=timeout  duração=6.02s passos= 2421 heartbeats=119 falhas=0 pior=0.002s
+passo único (pages=-1), com heartbeat            status=ok       duração=0.00s passos=    1 heartbeats=3 falhas=0 pior=0.002s

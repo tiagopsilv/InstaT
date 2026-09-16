@@ -1,0 +1,68 @@
+﻿
+=== v13.5 (SQL literal) ===
+T01   FAIL  repetição exata do mesmo commit com cursor NULL não duplica
+       commit1=committed:suspect | commit2=committed:suspect | páginas=2 | suspect_total=2
+T02   FAIL  página suspect seguida de nova leitura trusted na mesma posição
+       leitura1=committed:suspect | releitura=idempotente(violacao UNIQUE) | cursor confiável='c1'
+T03   FAIL  contas diferentes com a mesma geração não colidem
+       gerações A,B=(1,1) | claim B=ok | retomada (cursor_in='c1', pos=None) | commit B=idempotente(violacao UNIQUE)
+T04   FAIL  reivindicação por conta sem concessão é rejeitada
+       conta inexistente=ok | concessão expirada=ok
+T05   FAIL  revogação com requisição já em voo
+       enviou=True | commit da resposta=committed:suspect | cursor=None | nova operação=False | heartbeat=unknown
+T06   PASS  perda de posse antes do commit: nada gravado
+       heartbeat=unknown | commit=rejected:posse | páginas=0 | membros=0
+T07   FAIL  confiança histórica não contamina job novo
+       membros confiáveis atribuídos ao J2=['alice']
+T10   FAIL  promoção sem pk→pk preserva proveniência do job anterior
+       J1=[] | J2=['bob'] | linhas de membro=1
+T10b  FAIL  fusão de duas linhas preserva observações e registra auditoria
+       linhas de membro=2 | fusões auditadas=0 | J1=[] | J2=['caroline']
+T11   FAIL  suspeita histórica × aberta; job completa após releitura confiável
+       releitura=committed:trusted | suspect_total=1 | suspect_open=None | pode completar=False
+T12   FAIL  sem nova execução automática após restrição; só após requeue
+       claim imediato após restrição=ok | claim após requeue=rejected
+T08a  FAIL  UI sem cursor: estados distintos e retry exato sem dupla contagem
+       antes=indeterminado (v13.5 só tem cursor) | depois=indeterminado (v13.5 só tem cursor) | páginas confiáveis=2
+T08b  FAIL  UI: tela repetida leva a fim desconhecido, nunca a fim confirmado
+       estado após 3 telas idênticas=indeterminado (v13.5 só tem cursor)
+T08c  FAIL  UI: retomada não confunde releitura de conhecidos com fim de lista
+       claim run2=ok | durante releitura=indeterminado (v13.5 só tem cursor) | após frontier + 3 rodadas sem novos=indeterminado (v13.5 só tem cursor)
+T09   FAIL  comparação do backup usa ponto de consistência definido
+       {"writer_committed_during_check": true, "origin": 51, "backup": 50, "integrity": "ok", "counts_match": false}
+--- v13.5 (SQL literal): 1/15 passaram
+
+=== v13.6 (desenho proposto) ===
+T01   PASS  repetição exata do mesmo commit com cursor NULL não duplica
+       commit1=committed:suspect | commit2=duplicate:suspect | páginas=1 | suspect_total=1
+T02   PASS  página suspect seguida de nova leitura trusted na mesma posição
+       leitura1=committed:suspect | releitura=committed:trusted | cursor confiável='c2'
+T03   PASS  contas diferentes com a mesma geração não colidem
+       gerações A,B=(1,1) | claim B=ok | retomada (cursor_in=None, pos=0) | commit B=committed:trusted
+T04   PASS  reivindicação por conta sem concessão é rejeitada
+       conta inexistente=rejected:solicitante_sem_concessao | concessão expirada=rejected:solicitante_sem_concessao
+T05   PASS  revogação com requisição já em voo
+       enviou=True | commit da resposta=committed:suspect | cursor=None | nova operação=False | heartbeat=account_restricted
+T06   PASS  perda de posse antes do commit: nada gravado
+       heartbeat=lease_lost | commit=rejected:posse | páginas=0 | membros=0
+T07   PASS  confiança histórica não contamina job novo
+       membros confiáveis atribuídos ao J2=[]
+T10   PASS  promoção sem pk→pk preserva proveniência do job anterior
+       J1=['bob'] | J2=['bob'] | linhas de membro=1
+T10b  PASS  fusão de duas linhas preserva observações e registra auditoria
+       linhas de membro=1 | fusões auditadas=1 | J1=['caroline'] | J2=['caroline']
+T11   PASS  suspeita histórica × aberta; job completa após releitura confiável
+       releitura=committed:trusted | suspect_total=1 | suspect_open=0 | pode completar=True
+T12   PASS  sem nova execução automática após restrição; só após requeue
+       claim imediato após restrição=rejected:aguardando_requeue | claim após requeue=ok
+T08a  PASS  UI sem cursor: estados distintos e retry exato sem dupla contagem
+       antes=not_started | depois=in_progress | páginas confiáveis=1
+T08b  PASS  UI: tela repetida leva a fim desconhecido, nunca a fim confirmado
+       estado após 3 telas idênticas=end_unknown
+T08c  PASS  UI: retomada não confunde releitura de conhecidos com fim de lista
+       claim run2=ok | durante releitura=in_progress | após frontier + 3 rodadas sem novos=end_confirmed
+T09   PASS  comparação do backup usa ponto de consistência definido
+       {"writer_committed_during_check": false, "origin": 50, "backup": 50, "integrity": "ok", "counts_match": true}
+--- v13.6 (desenho proposto): 15/15 passaram
+
+resultados gravados em <scratchpad>\v136\results_green.json
