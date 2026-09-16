@@ -39,6 +39,11 @@ class TestInstaLogin(unittest.TestCase):
         self.mock_driver = self.driver_patcher.start().return_value
         self.mock_driver.current_url = self.login_url
 
+        # Sem rede: GeckoDriverManager consulta a API do GitHub (rate limit no CI)
+        gdm_patcher = patch("instat.login.GeckoDriverManager")
+        gdm_patcher.start().return_value.install.return_value = "geckodriver"
+        self.addCleanup(gdm_patcher.stop)
+
         selector_loader_patcher = patch("instat.login.SelectorLoader")
         mock_loader_class = selector_loader_patcher.start()
         self.addCleanup(selector_loader_patcher.stop)

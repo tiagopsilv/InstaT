@@ -73,3 +73,76 @@ Prints, em `docs/phase-evidence/fase-1/`, usando o fake server local estendido c
 Cada um será lido após ser gerado.
 
 Fora de escopo: conta real, Instagram, proxy e Android.
+
+## Passo 4 — TDD
+
+Os testes foram escritos a partir dos critérios do passo 3 e confirmados em vermelho antes de qualquer implementação. Eles estão no commit `923a9ad`.
+
+- Log do vermelho: [`04-tdd-vermelho.log.txt`](04-tdd-vermelho.log.txt). A coleta falha porque `default_session_dir`, `session_validation` e `user_agents` ainda não existiam.
+- Unitários: `tests/test_f1_session.py`, com 41 casos coletados e só fakes.
+- E2E: `tests/e2e/test_e2e_f1_session.py`, com Firefox real contra o fake server.
+
+## Passo 5 — Execução
+
+- **`instat/session_cache.py`:**
+  - schema v2 com leitura v1;
+  - validação que transforma qualquer arquivo inválido em miss;
+  - TTL com `>=`;
+  - escrita atômica (`mkstemp` + `fsync` + `os.replace`);
+  - `touch()`;
+  - `expected_ds_user_id()`;
+  - diretório `INSTAT_SESSION_DIR` ou `~/.instat/sessions`, com fallback legado no cwd.
+- **`instat/session_validation.py`** (novo): `classify_restored_session`, usado por Selenium e Playwright.
+- **`instat/login_flow.py`:** `SessionRestorer.attempt(..., expected_ds_user_id)` e `last_outcome`. Em `BLOCKED`, não limpa cookies, porque a página precisa ser inspecionada.
+- **`instat/login.py`:**
+  - a restauração passa pelo BlockDetector e renova o cache;
+  - uma restauração em challenge levanta `AccountBlockedError` sem abrir o formulário;
+  - UA Firefox no Gecko e UA Chrome no undetected-chrome.
+- **`instat/engines/playwright_engine.py`:**
+  - UA por `browser_type` (`_context_kwargs`);
+  - a restauração usa o classificador compartilhado;
+  - uma restauração em bloqueio levanta `BlockedError`;
+  - `MOBILE_UA` mantido como alias chromium.
+- **`instat/user_agents.py`** (novo) e `suspended` adicionado em `BlockDetector.URL_INDICATORS`.
+- **Infra de teste:**
+  - `tests/conftest.py` com o marcador `real` opt-in (`INSTAT_REAL_TESTS=1`); o CI usa `-m "not e2e and not mobile and not real"`;
+  - `tests/test_login.py` substitui o `GeckoDriverManager` (sem rede);
+  - fake server com `/challenge/`, `revoked_sessions`, `login_posts`, `ds_user_id` e `SameSite=Lax`.
+- **Dockerfile:** `ENV INSTAT_SESSION_DIR=/app/.instat_sessions`.
+
+Correções durante a execução:
+
+1. **Contrato legado quebrado pela minha implementação.** 4 testes existentes falharam por dois motivos: o kwarg `backend` em `save()` e a falta de fallback de `_block_detector`/`expected_ds_user_id` em objetos criados sem `__init__` ou em caches injetados. Corrigi a implementação; os testes antigos ficaram intactos. Consequência: o Selenium não registra `backend` (fica `null`), e o Playwright registra.
+2. **Cookie recusado no E2E.** O fake server, em HTTP puro, deixava o Firefox devolver `SameSite=None` sem `secure`, e o re-add falhava. O fake server agora envia `SameSite=Lax` explícito. É uma limitação do fake e não um defeito do produto: os cookies do Instagram são `secure`/HTTPS.
+
+## Passo 6 — Testes
+
+| Verificação | Resultado | Log |
+|---|---|---|
+| Suíte 3.12 com extras (`not e2e/mobile/real`) | 678 passed, 0 failed | [`06-suite-312.log.txt`](06-suite-312.log.txt) |
+| Suíte 3.13 (sem stealth) | 678 passed, 0 failed | [`06-suite-313.log.txt`](06-suite-313.log.txt) |
+| E2E Firefox real + fake server (5 antigos + 3 da F1) | 8 passed | [`07-e2e-fake-server.log.txt`](07-e2e-fake-server.log.txt) |
+| ruff | limpo | [`06-ruff.log.txt`](06-ruff.log.txt) |
+| mypy | limpo | [`06-mypy.log.txt`](06-mypy.log.txt) |
+
+Aceite:
+
+| Critério | Status | Evidência |
+|---|---|---|
+| Zero falsos positivos em cenários controlados | ✅ | challenge, checkpoint, suspended, auth_platform, two_factor, login e identidade trocada: todos rejeitados (unit). Challenge também com Firefox real (print 03). |
+| Zero formulários em 10 reinícios com sessão válida | ✅ | `test_ten_restarts_with_valid_session_open_zero_forms`. Antes, a medição do passo 1 dava 1 de 10. |
+| UA coerente nos 3 browser_types e no Selenium | ✅ | Unit por família. Com Firefox real, `navigator.userAgent` = Firefox/Gecko (print 01). |
+| Testes offline sem rede | ✅ | `GeckoDriverManager` substituído |
+
+**Não testado nesta fase:**
+- Instagram real, conta de teste, proxy e Android.
+- Playwright com navegador real: o restore do Playwright tem cobertura só de unidade e de código-fonte.
+- O CI desta branch; os resultados acima são locais.
+
+## Passo 7 — Prints (lidos)
+
+| Print | O que mostra | Leitura |
+|---|---|---|
+| [`01-restaurada.png`](01-restaurada.png) | Feed do fake server após o restart | resultado `ok`, 0 POSTs de login, UA `Android 14; Mobile; rv:142.0 … Firefox/142.0` |
+| [`02-expirada.png`](02-expirada.png) | Feed após a sessão ser revogada no servidor | restauração `login`, exatamente 1 POST de formulário |
+| [`03-challenge.png`](03-challenge.png) | Página "Confirme que é você" em `/challenge/abc123/` | restauração `blocked`, `AccountBlockedError (Desafio de segurança)`, 0 POSTs |

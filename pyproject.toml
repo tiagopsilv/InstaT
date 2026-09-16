@@ -87,7 +87,8 @@ addopts = "-ra -q"
 testpaths = ["tests"]
 markers = [
     "e2e: end-to-end tests requiring Firefox (deselect with -m 'not e2e')",
-    "mobile: tests requiring an Android container/device (deselect with -m 'not mobile')"
+    "mobile: tests requiring an Android container/device (deselect with -m 'not mobile')",
+    "real: tests against the real Instagram with the local test account; opt-in via INSTAT_REAL_TESTS=1 (see docs/ROADMAP_MOBILE.md §7.1)"
 ]
 
 [tool.ruff]

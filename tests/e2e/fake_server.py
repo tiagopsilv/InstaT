@@ -9,7 +9,10 @@ Endpoints:
   GET  /{username}/               -> perfil com links followers/following
   GET  /{username}/followers/     -> modal com perfis
   GET  /{username}/following/     -> idem para following
-  GET  /_fake/set_mode?mode=X     -> override global (normal|ratelimit|block)
+  GET  /challenge/...             -> página de challenge
+  GET  /_fake/set_mode?mode=X     -> override global
+                                     (normal|ratelimit|block|challenge)
+  STATE.revoked_sessions               -> sessionids que o servidor rejeita
 """
 import http.server
 import socket
@@ -35,8 +38,10 @@ class FakeInstagramState:
         self.profiles_db = {
             'target': {f'user_{i:03d}' for i in range(100)},
         }
-        self.mode = 'normal'  # 'normal' | 'ratelimit' | 'block'
+        self.mode = 'normal'  # 'normal' | 'ratelimit' | 'block' | 'challenge'
         self.session_cookies = {}
+        self.revoked_sessions = set()
+        self.login_posts = 0
 
 
 STATE = FakeInstagramState()
@@ -68,6 +73,17 @@ class FakeInstagramHandler(http.server.SimpleHTTPRequestHandler):
             for u in usernames
         )
 
+    def _cookie(self, name: str):
+        from http.cookies import SimpleCookie
+        jar = SimpleCookie(self.headers.get('Cookie', ''))
+        return jar[name].value if name in jar else None
+
+    def _redirect(self, location: str):
+        self.send_response(302)
+        self.send_header('Location', location)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         url = urlparse(self.path)
         path = url.path
@@ -91,6 +107,25 @@ class FakeInstagramHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == '/accounts/login/':
             self._send_html(self._render('login.html'))
+            return
+
+        # Sessão revogada/expirada no servidor → volta ao login
+        if path == '/' and self._cookie('sessionid') in STATE.revoked_sessions:
+            self._redirect('/accounts/login/')
+            return
+
+        # Mode: challenge (sessão restaurada cai num challenge)
+        if STATE.mode == 'challenge' and path == '/':
+            self._redirect('/challenge/abc123/')
+            return
+
+        if path.startswith('/challenge/'):
+            self._send_html(
+                '<html><head><title>Challenge</title></head><body>'
+                '<h1>Confirme que é você</h1>'
+                '<p>Precisamos verificar esta conta (fake server).</p>'
+                '</body></html>'
+            )
             return
 
         if path == '/':
@@ -139,11 +174,15 @@ class FakeInstagramHandler(http.server.SimpleHTTPRequestHandler):
             params = parse_qs(body)
             username = params.get('username', [''])[0]
             password = params.get('password', [''])[0]
+            STATE.login_posts += 1
             if STATE.valid_credentials.get(username) == password:
-                sessionid = f'sess_{username}'
+                sessionid = f'sess_{username}_{STATE.login_posts}'
                 STATE.session_cookies[sessionid] = username
                 self.send_response(302)
-                self.send_header('Set-Cookie', f'sessionid={sessionid}; Path=/')
+                # SameSite explícito: em HTTP puro o Firefox devolve
+                # SameSite=None sem `secure` e recusa re-adicionar o cookie.
+                self.send_header('Set-Cookie', f'sessionid={sessionid}; Path=/; SameSite=Lax')
+                self.send_header('Set-Cookie', f'ds_user_id={sum(map(ord, username))}; Path=/; SameSite=Lax')
                 self.send_header('Location', '/')
                 self.end_headers()
                 return

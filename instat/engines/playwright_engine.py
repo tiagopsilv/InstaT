@@ -8,20 +8,24 @@ from typing import Callable, Optional, Set
 from loguru import logger
 
 try:
+    from instat.block_detector import BlockDetector
     from instat.constants import SCROLL_PAUSE, human_delay
     from instat.engines.base import BaseEngine
     from instat.exceptions import BlockedError, ProfileNotFoundError
     from instat.session_cache import SessionCache
+    from instat.session_validation import RestoreOutcome, classify_restored_session
+    from instat.user_agents import mobile_user_agent
 except ImportError:
+    from block_detector import BlockDetector
     from constants import SCROLL_PAUSE, human_delay
     from engines.base import BaseEngine
     from exceptions import BlockedError, ProfileNotFoundError
     from session_cache import SessionCache
+    from session_validation import RestoreOutcome, classify_restored_session
+    from user_agents import mobile_user_agent
 
-MOBILE_UA = (
-    "Mozilla/5.0 (Linux; Android 8.0; Nexus 5 Build/OPR6.170623.013) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Mobile Safari/537.36"
-)
+# Back-compat: UA chromium. Contexts use mobile_user_agent(browser_type).
+MOBILE_UA = mobile_user_agent('chromium')
 
 
 class PlaywrightEngine(BaseEngine):
@@ -90,6 +94,14 @@ class PlaywrightEngine(BaseEngine):
         self._page = None
         self._session_cache = SessionCache()
 
+    def _context_kwargs(self) -> dict:
+        """UA coerente com o motor (chromium/firefox/webkit)."""
+        ctx_kwargs = {'user_agent': mobile_user_agent(self._browser_type),
+                      'viewport': {'width': 375, 'height': 667}}
+        if self._proxy:
+            ctx_kwargs['proxy'] = {'server': self._proxy}
+        return ctx_kwargs
+
     def login(self, username: str, password: str, **kwargs) -> bool:
         # Imports aqui (não no topo) para que is_available funcione sem playwright
         from playwright.sync_api import sync_playwright
@@ -126,28 +138,38 @@ class PlaywrightEngine(BaseEngine):
         else:
             self._browser = browser_launcher.launch(headless=self._headless)
 
-        ctx_kwargs = {'user_agent': MOBILE_UA, 'viewport': {'width': 375, 'height': 667}}
-        if self._proxy:
-            ctx_kwargs['proxy'] = {'server': self._proxy}
+        ctx_kwargs = self._context_kwargs()
 
-        # Tentar restaurar sessão via cookies cached
+        # Tentar restaurar sessão via cookies cached (mesma validação do Selenium)
         cookies = self._session_cache.load(username)
         if cookies:
+            outcome = RestoreOutcome.ERROR
             try:
                 self._context = self._browser.new_context(**ctx_kwargs)
                 self._context.add_cookies(cookies)
                 self._page = self._context.new_page()
                 stealth_sync(self._page)
                 self._page.goto('https://www.instagram.com/')
-                if '/accounts/login' not in self._page.url:
-                    logger.info(f'{self.name}: session restored from cookie cache')
-                    return True
-                logger.debug(f'{self.name}: cached cookies invalid, doing form login')
-                self._context.close()
-                self._context = None
-                self._page = None
+                jar = {c['name']: c.get('value') for c in self._context.cookies()}
+                outcome = classify_restored_session(
+                    self._page.url, jar.get,
+                    self._session_cache.expected_ds_user_id(username),
+                )
             except Exception as e:
                 logger.debug(f'{self.name}: cache restore failed: {e}')
+            if outcome is RestoreOutcome.OK:
+                self._session_cache.touch(username)
+                logger.info(f'{self.name}: session restored from cookie cache')
+                return True
+            if outcome is RestoreOutcome.BLOCKED:
+                url = self._page.url
+                logger.error(f'{self.name}: restored session is blocked at {url}')
+                raise BlockedError(f'{self.name} blocked: {url}')
+            logger.debug(f'{self.name}: cached cookies rejected ({outcome.value}), doing form login')
+            if self._context is not None:
+                self._context.close()
+            self._context = None
+            self._page = None
 
         # Form login
         self._context = self._browser.new_context(**ctx_kwargs)
@@ -168,17 +190,15 @@ class PlaywrightEngine(BaseEngine):
             logger.error(f'{self.name}: login failed: {e}')
             raise BlockedError(f'{self.name} login failed') from e
 
-        # Detect block (checkpoint, 2FA, etc) via URL pattern
+        # Detect block (checkpoint, 2FA, suspended, etc) via URL pattern
         current_url = self._page.url.lower()
-        block_patterns = ['challenge', 'checkpoint', 'auth_platform',
-                          'codeentry', 'two_factor', 'suspicious']
-        if any(p in current_url for p in block_patterns):
+        if any(p in current_url for p in BlockDetector.URL_INDICATORS):
             logger.error(f'{self.name}: blocked at URL {current_url}')
             raise BlockedError(f'{self.name} blocked: {current_url}')
 
         # Save cookies
         try:
-            self._session_cache.save(username, self._context.cookies())
+            self._session_cache.save(username, self._context.cookies(), backend=self.name)
             logger.info(f'{self.name}: login successful, cookies cached')
         except Exception as e:
             logger.debug(f'{self.name}: failed to save cookies: {e}')
