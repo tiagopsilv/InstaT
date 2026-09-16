@@ -146,3 +146,7 @@ Aceite:
 | [`01-restaurada.png`](01-restaurada.png) | Feed do fake server após o restart | resultado `ok`, 0 POSTs de login, UA `Android 14; Mobile; rv:142.0 … Firefox/142.0` |
 | [`02-expirada.png`](02-expirada.png) | Feed após a sessão ser revogada no servidor | restauração `login`, exatamente 1 POST de formulário |
 | [`03-challenge.png`](03-challenge.png) | Página "Confirme que é você" em `/challenge/abc123/` | restauração `blocked`, `AccountBlockedError (Desafio de segurança)`, 0 POSTs |
+
+## Aceite de CI
+
+Run `35152282343`, no PR #6 (somente CI, fechado sem merge): lint-and-type ✅, test 3.12 ✅, test 3.13 ✅, build ✅. Todos passaram na primeira execução.
