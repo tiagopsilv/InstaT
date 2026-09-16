@@ -1,0 +1,88 @@
+﻿=== v13.7 (desenho proposto) | início 2026-09-16T16:00:06
+T01   PASS         0.02s  repetição exata do mesmo commit com cursor NULL não duplica
+      commit1=committed:suspect | commit2=duplicate:suspect | páginas=1
+T02   PASS         0.02s  suspect seguida de nova leitura trusted na mesma posição
+      committed:suspect | committed:trusted | cursor='c2'
+T03   PASS         0.02s  contas com a mesma geração coexistem na mesma posição lógica
+      gerações=(1,1) | claim B=ok | commit B=committed:trusted | trusted em pos 0=2
+T04   PASS         0.02s  reivindicação sem concessão válida é rejeitada
+      inexistente=rejected:solicitante_sem_concessao | expirada=rejected:solicitante_sem_concessao
+T05   PASS         0.02s  restrição com requisição em voo: suspect, sem nova operação
+      enviou=True | commit=committed:suspect | nova=False/account_restricted | heartbeat=account_restricted
+T06   PASS         0.02s  perda de posse antes do commit: nada gravado
+      heartbeat=lease_lost | commit=rejected:posse | páginas=0
+T07   PASS         0.03s  confiança de outro job não conta no job novo
+      selecionados J2=[]
+T08a  PASS         0.02s  UI: estados distintos e retry exato sem dupla contagem
+      not_started → in_progress | páginas trusted=1
+T08b  PASS         0.02s  UI: tela repetida → fim desconhecido
+      estado=end_unknown
+T08c  PASS         0.05s  UI: retomada; fim só com evidência positiva
+      claim=ok | releitura=in_progress | com marcador=end_confirmed | sem marcador=end_unknown
+T10   PASS         0.02s  promoção sem pk→pk preserva proveniência
+      J1=['bob'] | J2=['bob'] | membros=1
+T10b  PASS         0.03s  fusão de duas linhas com auditoria
+      membros=1 | fusões=1 | J2=['caroline']
+T11   PASS         0.02s  suspeita resolvida por releitura; job completa com marcador
+      releitura=committed:trusted | suspect_open=0 | status=complete
+T11b  PASS         0.02s  backend com cursor: cursor ausente sem sinal de fim não é fim
+      estado=end_unknown
+T12   PASS         0.02s  após restrição, nova execução só com requeue manual
+      sem requeue=rejected:aguardando_requeue | requeue=ok | depois=ok
+X01   PASS         0.02s  mesmo attempt_id com conteúdo diferente é erro
+      committed:trusted | error:attempt_id_reutilizado_com_conteudo_diferente
+X02   PASS         0.02s  segunda leitura trusted da mesma posição é rejeitada
+      committed:trusted | rejected:posicao_obsoleta(esperada=1)
+N01   PASS         0.02s  run 1 Ana/Bruno, run 2 Ana/Carla: histórico, seleção e sem 'unfollow'
+      requeue=ok claim=ok | selecionada=2 ['ana', 'carla'] | histórico=['ana', 'bruno', 'carla'] | run1=['ana', 'bruno']
+N02   PASS         0.03s  última tentativa falha após run válida: seleção e datas separadas
+      {"selected_run_id": 1, "selected_run_status": "complete", "selected_run_at": 1001.0, "last_attempt_run_id": 2, "last_attempt_stop_reason": "technical_error", "last_attempt_at": 1005.0}
+N03   PASS         0.02s  membro confiável no histórico, só suspeito na run atual
+      run2=['ana'] | histórico=['ana', 'bruno'] | selecionada=1
+N04   PASS         0.02s  commit repetido após crash (nova conexão) não duplica nada
+      committed:trusted | após crash=duplicate:trusted | páginas=1 observações=1 next_pos=1
+N05   PASS         0.01s  canônico: variação de caixa/espaço é a mesma tentativa; conteúdo diferente é erro
+      committed:trusted | canônico igual=duplicate:trusted | diferente=error:attempt_id_reutilizado_com_conteudo_diferente
+N07   PASS         0.02s  fusão não transfere confiança entre execuções
+      J2=[] | J1=['caroline'] | fusões=1
+N08   PASS         0.02s  attempt_id reutilizado em outra execução é erro, não duplicata
+      resultado=error:attempt_id_de_outra_execucao
+N09   PASS         0.03s  run parcial não completa por união histórica
+      run2=partial | selecionada=1
+U01   PASS         0.02s  inserção isolada durante a releitura não encerra a releitura
+      após inserção=0 | após cobertura=1
+U02   PASS         0.02s  remoção e reordenação entre telas: sem duplicata nem lacuna
+      lacunas=0 | membros=5
+U03   PASS         0.02s  tela sem sobreposição com a anterior impede completar
+      lacunas=1 | status=partial
+U04   PASS         0.03s  reinício do app abre novo segmento sem consumir execução
+      restart=ok | segmento=1 releitura_concluída=0 sem_novos=0 | execuções=1
+U06   PASS         0.04s  K telas sem novos: desconhecido sem evidência; confirmado com contador exato compatível
+      sem evidência=end_unknown | contador exato=end_confirmed
+D03   PASS         0.02s  cancelamento: sem nova operação; resposta em voo com qualidade normal
+      envio=False/cancel_requested | em voo=committed:trusted | nova run sem requeue=rejected:aguardando_requeue
+D04   PASS         0.02s  falha técnica: nova execução automática dentro do limite
+      claim=ok | execuções=2
+D05   PASS         0.02s  worker obsoleto não grava após outra execução assumir
+      B=ok | antigo=rejected:posse | reobtido=rejected:posse | páginas run1=0
+L01   PASS         0.02s  duas releituras adicionais por posição; duplicata não consome
+      committed:suspect | duplicate:suspect | committed:suspect | committed:suspect | rejected:limite_de_releituras
+L02   PASS         0.03s  releituras esgotadas: sem ciclo automático; só requeue manual
+      automático=rejected:aguardando_requeue | requeue=ok | manual=ok
+L03   PASS         0.02s  três execuções por job: quarta e requeue rejeitados
+      claims=['ok', 'ok', 'ok', 'rejected:limite_de_execucoes'] | requeue=rejected:limite_de_execucoes
+L04   PASS         0.02s  restrição: tempo não libera; liberação manual exige sessão validada
+      após tempo=None | sem validação=rejected:sessao_nao_validada/None | validada=ok/True
+B01   PASS         0.51s  backup online (passo único) com heartbeat e escritor ativos
+      backup=ok verif=True | heartbeats=9 falhas=0 pior=0.011s | escritas=67
+B02   PASS         1.30s  backup incremental mais lento que o heartbeat: heartbeat não bloqueia; prazo explícito
+      status=timeout duração=1.01s | heartbeats=45 falhas=0 pior=0.025s | .bak existe=False | escritas=290
+B03   PASS         0.05s  janela de manutenção: exige drenagem; digest igual à origem
+      sem drenagem=rejected:nao_drenado | drenado=ok digest_igual=True
+B04   PASS         0.01s  backup a partir de conexão com transação aberta é recusado sem travar
+      travou=False | resultado=BackupMisuse
+B05   PASS         0.24s  verificação usa o ponto de consistência da cópia, não a origem viva
+      verif={'ok': True, 'integrity': 'ok', 'fk_violations': 0, 'dup_trusted': 0, 'next_pos_mismatch': 0, 'marker': {'max_run_id': 1, 'max_page_id': 40, 'max_committed_at': 1039.0, 'pages': 40}, 'compared_with_live_origin': False} | bench origem=54 cópia=18
+C01   PASS         0.10s  4 processos disputam o mesmo job: exatamente um vence
+      resultados=['ok', 'rejected:job_com_execucao_vigente', 'rejected:job_com_execucao_vigente', 'rejected:job_com_execucao_vigente']
+--- v13.7 (desenho proposto): {'PASS': 43, 'FAIL': 0, 'API_AUSENTE': 0}

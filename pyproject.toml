@@ -79,7 +79,8 @@ minversion = "7.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 markers = [
-    "e2e: end-to-end tests requiring Firefox (deselect with -m 'not e2e')"
+    "e2e: end-to-end tests requiring Firefox (deselect with -m 'not e2e')",
+    "mobile: tests requiring an Android container/device (deselect with -m 'not mobile')"
 ]
 
 [tool.ruff]

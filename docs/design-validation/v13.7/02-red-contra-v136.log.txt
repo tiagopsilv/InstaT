@@ -1,0 +1,88 @@
+﻿=== v13.6 (desenho proposto) | início 2026-09-16T15:54:54
+T01   PASS         0.02s  repetição exata do mesmo commit com cursor NULL não duplica
+      commit1=committed:suspect | commit2=duplicate:suspect | páginas=1
+T02   PASS         0.02s  suspect seguida de nova leitura trusted na mesma posição
+      committed:suspect | committed:trusted | cursor='c2'
+T03   PASS         0.02s  contas com a mesma geração coexistem na mesma posição lógica
+      gerações=(1,1) | claim B=ok | commit B=committed:trusted | trusted em pos 0=2
+T04   PASS         0.01s  reivindicação sem concessão válida é rejeitada
+      inexistente=rejected:solicitante_sem_concessao | expirada=rejected:solicitante_sem_concessao
+T05   PASS         0.02s  restrição com requisição em voo: suspect, sem nova operação
+      enviou=True | commit=committed:suspect | nova=False/account_restricted | heartbeat=account_restricted
+T06   PASS         0.02s  perda de posse antes do commit: nada gravado
+      heartbeat=lease_lost | commit=rejected:posse | páginas=0
+T07   PASS         0.02s  confiança de outro job não conta no job novo
+      selecionados J2=[]
+T08a  PASS         0.02s  UI: estados distintos e retry exato sem dupla contagem
+      not_started → in_progress | páginas trusted=1
+T08b  PASS         0.02s  UI: tela repetida → fim desconhecido
+      estado=end_unknown
+T08c  FAIL         0.06s  UI: retomada; fim só com evidência positiva
+      claim=ok | releitura=in_progress | com marcador=end_confirmed | sem marcador=end_confirmed
+T10   PASS         0.02s  promoção sem pk→pk preserva proveniência
+      J1=['bob'] | J2=['bob'] | membros=1
+T10b  PASS         0.02s  fusão de duas linhas com auditoria
+      membros=1 | fusões=1 | J2=['caroline']
+T11   PASS         0.02s  suspeita resolvida por releitura; job completa com marcador
+      releitura=committed:trusted | suspect_open=0 | status=complete
+T11b  FAIL         0.01s  backend com cursor: cursor ausente sem sinal de fim não é fim
+      estado=end_confirmed
+T12   PASS         0.02s  após restrição, nova execução só com requeue manual
+      sem requeue=rejected:aguardando_requeue | requeue=ok | depois=ok
+X01   PASS         0.02s  mesmo attempt_id com conteúdo diferente é erro
+      committed:trusted | error:attempt_id_reutilizado_com_conteudo_diferente
+X02   PASS         0.01s  segunda leitura trusted da mesma posição é rejeitada
+      committed:trusted | rejected:posicao_obsoleta(esperada=1)
+N01   FAIL         0.03s  run 1 Ana/Bruno, run 2 Ana/Carla: histórico, seleção e sem 'unfollow'
+      EXCEÇÃO IndexError: list index out of range | return sql(m, f"SELECT {col} FROM runs WHERE run_id=?", (run,))[0][0]
+N02   API_AUSENTE  0.01s  última tentativa falha após run válida: seleção e datas separadas
+      método job_view ausente
+N03   API_AUSENTE  0.01s  membro confiável no histórico, só suspeito na run atual
+      método run_result ausente
+N04   API_AUSENTE  0.01s  commit repetido após crash (nova conexão) não duplica nada
+      construtor sem create=False (V136.__init__() got an unexpected keyword argument 'create')
+N05   FAIL         0.01s  canônico: variação de caixa/espaço é a mesma tentativa; conteúdo diferente é erro
+      committed:suspect | canônico igual=error:attempt_id_reutilizado_com_conteudo_diferente | diferente=error:attempt_id_reutilizado_com_conteudo_diferente
+N07   PASS         0.03s  fusão não transfere confiança entre execuções
+      J2=[] | J1=['caroline'] | fusões=1
+N08   FAIL         0.02s  attempt_id reutilizado em outra execução é erro, não duplicata
+      resultado=duplicate:trusted
+N09   FAIL         0.02s  run parcial não completa por união histórica
+      EXCEÇÃO IndexError: list index out of range | return sql(m, f"SELECT {col} FROM runs WHERE run_id=?", (run,))[0][0]
+U01   FAIL         0.02s  inserção isolada durante a releitura não encerra a releitura
+      após inserção=1 | após cobertura=1
+U02   API_AUSENTE  0.02s  remoção e reordenação entre telas: sem duplicata nem lacuna
+      schema sem suporte: no such column: continuity_gaps
+U03   API_AUSENTE  0.03s  tela sem sobreposição com a anterior impede completar
+      schema sem suporte: no such column: continuity_gaps
+U04   API_AUSENTE  0.01s  reinício do app abre novo segmento sem consumir execução
+      método restart_segment ausente
+U06   FAIL         0.04s  K telas sem novos: desconhecido sem evidência; confirmado com contador exato compatível
+      sem evidência=end_confirmed | contador exato=end_confirmed
+D03   API_AUSENTE  0.02s  cancelamento: sem nova operação; resposta em voo com qualidade normal
+      método request_cancel ausente
+D04   PASS         0.02s  falha técnica: nova execução automática dentro do limite
+      claim=ok | execuções=2
+D05   PASS         0.02s  worker obsoleto não grava após outra execução assumir
+      B=ok | antigo=rejected:posse | reobtido=rejected:posse | páginas run1=0
+L01   PASS         0.03s  duas releituras adicionais por posição; duplicata não consome
+      committed:suspect | duplicate:suspect | committed:suspect | committed:suspect | rejected:limite_de_releituras
+L02   FAIL         0.02s  releituras esgotadas: sem ciclo automático; só requeue manual
+      automático=ok | requeue=ok | manual=rejected:job_com_execucao_vigente
+L03   FAIL         0.02s  três execuções por job: quarta e requeue rejeitados
+      claims=['ok', 'ok', 'ok', 'rejected:limite_de_execucoes'] | requeue=ok
+L04   API_AUSENTE  0.01s  restrição: tempo não libera; liberação manual exige sessão validada
+      set_auth sem restricted_until/now
+B01   API_AUSENTE  0.05s  backup online (passo único) com heartbeat e escritor ativos
+      método backup_online ausente
+B02   API_AUSENTE  0.05s  backup incremental mais lento que o heartbeat: heartbeat não bloqueia; prazo explícito
+      método backup_online ausente
+B03   API_AUSENTE  0.04s  janela de manutenção: exige drenagem; digest igual à origem
+      método backup_maintenance ausente
+B04   API_AUSENTE  0.01s  backup a partir de conexão com transação aberta é recusado sem travar
+      método backup_from_connection ausente
+B05   API_AUSENTE  0.04s  verificação usa o ponto de consistência da cópia, não a origem viva
+      método backup_online ausente
+C01   API_AUSENTE  0.01s  4 processos disputam o mesmo job: exatamente um vence
+      construtor sem create=False (V136.__init__() got an unexpected keyword argument 'create')
+--- v13.6 (desenho proposto): {'PASS': 19, 'FAIL': 10, 'API_AUSENTE': 14}

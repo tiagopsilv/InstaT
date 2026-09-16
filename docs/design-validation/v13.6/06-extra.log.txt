@@ -1,0 +1,8 @@
+﻿v13.5 (SQL literal)        X01 FAIL  mesmo attempt_id com conteúdo diferente é erro, não sucesso
+    primeiro=committed:trusted | mesmo attempt, conteúdo diferente=rejected:job
+v13.5 (SQL literal)        X02 PASS  segunda leitura trusted da mesma posição (outra tentativa) é rejeitada, não aceita em silêncio
+    primeira=committed:trusted | segunda leitura da posição já confiável=rejected:job
+v13.6 (desenho proposto)   X01 PASS  mesmo attempt_id com conteúdo diferente é erro, não sucesso
+    primeiro=committed:trusted | mesmo attempt, conteúdo diferente=error:attempt_id_reutilizado_com_conteudo_diferente
+v13.6 (desenho proposto)   X02 PASS  segunda leitura trusted da mesma posição (outra tentativa) é rejeitada, não aceita em silêncio
+    primeira=committed:trusted | segunda leitura da posição já confiável=rejected:posicao_obsoleta(esperada=1)

@@ -59,6 +59,16 @@ except ImportError:
     from session_pool import SessionPool
     from worker_pool import WorkerPool  # type: ignore
 
+# Engines mobile opt-in (roadmap §3.1). Import tolerante: se o pacote
+# mobile não estiver presente, a cascata segue só com os engines web.
+try:
+    from instat.mobile.engines import MOBILE_ENGINE_NAMES as _MOBILE_ENGINE_NAMES
+except ImportError:
+    try:
+        from mobile.engines import MOBILE_ENGINE_NAMES as _MOBILE_ENGINE_NAMES  # type: ignore
+    except ImportError:
+        _MOBILE_ENGINE_NAMES = {}
+
 
 class InstaExtractor:
     """
@@ -292,6 +302,11 @@ class InstaExtractor:
                     built.append(eng)
                 else:
                     logger.warning("httpx requested but not installed — skipping")
+            elif name in _MOBILE_ENGINE_NAMES:
+                # Opt-in mobile (roadmap §3.1): reconhecidos como engines
+                # novos na cascata. Ainda stubs — falham alto se usados como
+                # primário; a intenção é ficarem ANTES de selenium/httpx.
+                built.append(_MOBILE_ENGINE_NAMES[name]())
             else:
                 logger.warning(f"Unknown engine name: {name}")
         if not built:
