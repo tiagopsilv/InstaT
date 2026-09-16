@@ -276,21 +276,12 @@ class TestBuildRotationExtractorInheritance(unittest.TestCase):
         ext._completion_threshold_override = 0.5
         ext._headless = False
 
-        captured = []
-        orig = InstaExtractor
-
-        def fake_init(self, **kwargs):
-            captured.append(kwargs)
-
-        with patch('instat.extractor.InstaExtractor', side_effect=orig) as mock_cls:
-            # We can't fully mock __init__ without side-effects; just call
-            # _build_rotation_extractor and capture via mock_cls.call_args
-            try:
-                ext._build_rotation_extractor('alt', 'pw', 'http://proxy')
-            except Exception:
-                # __init__ will fail because we can't really construct one;
-                # we just want to verify the args that were passed.
-                pass
+        # O mock só captura os argumentos. Não usar side_effect=InstaExtractor:
+        # isso constrói o extractor real, abre um Firefox visível (headless=False),
+        # tenta login com credenciais falsas e deixa o navegador aberto,
+        # travando quem espera a saída da suíte (roadmap F0).
+        with patch('instat.extractor.InstaExtractor') as mock_cls:
+            ext._build_rotation_extractor('alt', 'pw', 'http://proxy')
         kw = mock_cls.call_args.kwargs
         self.assertEqual(kw['username'], 'alt')
         self.assertEqual(kw['password'], 'pw')

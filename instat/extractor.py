@@ -186,6 +186,11 @@ class InstaExtractor:
         engine_instances = self._build_engines(engine_spec, headless, timeout)
         primary_engine = engine_instances[0]
 
+        # Stub mobile como engine primária: falhar já, citando a fase do
+        # roadmap, em vez de deixar o login do stub virar LoginError genérico.
+        if type(primary_engine) in set(_MOBILE_ENGINE_NAMES.values()):
+            raise primary_engine.not_implemented_error("login")
+
         # Propaga imap_config para engines Selenium (único capaz de resolver
         # challenge via browser).
         if imap_config is not None:

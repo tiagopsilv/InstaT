@@ -1,0 +1,19 @@
+=== F0 passo 5/6 — testes novos após a implementação 2026-09-16 17:30:35 | venv 3.12 .[dev,httpx,playwright]
+PASSED tests/test_packaging.py::test_wheel_contains_every_source_package
+PASSED tests/test_packaging.py::test_wheel_ships_selectors_json
+PASSED tests/test_packaging.py::test_wheel_excludes_logs_and_cookies
+PASSED tests/test_packaging.py::test_wheel_requires_python_312
+PASSED tests/test_python_policy.py::test_requires_python_is_312
+PASSED tests/test_python_policy.py::test_classifiers_start_at_312
+PASSED tests/test_python_policy.py::test_declared_versions_are_tested_in_ci
+PASSED tests/test_python_policy.py::test_ci_versions_respect_minimum
+PASSED tests/test_python_policy.py::test_ci_installs_optional_extras_used_by_tests
+PASSED tests/test_python_policy.py::test_ci_smoke_tests_installed_wheel_outside_checkout
+PASSED tests/test_python_policy.py::test_tool_targets_312
+PASSED tests/test_python_policy.py::test_readme_states_312
+PASSED tests/test_python_policy.py::test_dockerfile_uses_312_or_newer
+PASSED tests/test_python_policy.py::test_stealth_extra_ships_distutils_shim
+PASSED tests/mobile/test_contracts.py::test_mobile_stub_messages_cite_current_roadmap_phase[AndroidUiEngine-F7]
+PASSED tests/mobile/test_contracts.py::test_mobile_stub_messages_cite_current_roadmap_phase[MobileApiEngine-F8]
+PASSED tests/mobile/test_contracts.py::test_mobile_stub_as_primary_engine_fails_fast_citing_phase
+============================= 17 passed in 12.05s =============================

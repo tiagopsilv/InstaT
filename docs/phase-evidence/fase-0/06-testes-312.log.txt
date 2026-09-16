@@ -1,0 +1,122 @@
+=== F0 passo 6 — 2026-09-16 17:30:17
+HEAD f24353c30caadc7c531a9e0ba699d92184e5cb55
+ M .github/workflows/ci.yml
+ M .gitignore
+ M CHANGELOG.md
+ M README.md
+ M docs/HISTORICO_MOBILE.md
+ M instat/diagnostics.py
+ M instat/extractor.py
+ M instat/logging_config.py
+ M instat/mobile/engines.py
+ M instat/post_metrics.py
+ M pyproject.toml
+ M tests/mobile/test_contracts.py
+ M tests/test_account_rotation.py
+ M tests/test_providers.py
+ M tests/test_python_policy.py
+ M tests/test_recent_gaps.py
+?? docs/phase-evidence/fase-0/05b-tdd-vermelho-stealth.log.txt
+?? docs/phase-evidence/fase-6a/
+
+
+--- 1. testes novos da F0 — venv 3.12 com .[dev] (reinstala editável após a mudança de packaging) [17:30:17]
+$ <scratchpad>\f0\venv312\Scripts\python.exe -m pip install -e .[dev] -q
+    [exit 0 | 4.8s]
+
+--- 1b. testes novos da F0 [17:30:22]
+$ <scratchpad>\f0\venv312\Scripts\python.exe -m pytest tests/test_packaging.py tests/test_python_policy.py tests/mobile/test_contracts.py -p no:cacheprovider -rs
+    SKIPPED [1] tests\mobile\test_contracts.py:87: extra opcional httpx não instalado
+    37 passed, 1 skipped in 4.62s
+    [exit 0 | 5.0s]
+
+--- 2. suíte offline — venv 3.12 somente .[dev] [17:30:27]
+$ <scratchpad>\f0\venv312\Scripts\python.exe -m pytest tests -m not e2e and not mobile -p no:cacheprovider -rs --durations=12 -o faulthandler_timeout=600
+    26.05s call     tests/test_login.py::TestInstaLogin::test_fallback_button_click
+    25.97s call     tests/test_login.py::TestInstaLogin::test_successful_login
+    25.55s call     tests/test_failure_scenarios.py::TestExpiredSessionFallsBackToForm::test_stale_cache_redirects_to_login_triggers_form_fallback
+    25.54s call     tests/test_session_cache.py::TestLoginUsesCache::test_login_saves_after_success
+    13.17s call     tests/test_perf_02.py::TestReopenModal::test_reopen_modal_success
+    6.37s call     tests/test_challenge_resolvers.py::TestBloksCodeEntryResolver::test_resolve_no_imap_code_returns_false
+    5.47s call     tests/test_login.py::TestInstaLogin::test_invalid_credentials
+    4.24s setup    tests/test_packaging.py::test_wheel_contains_every_source_package
+    1.40s call     tests/test_skip_persistent_engine.py::TestEngineManagerExcludeEngines::test_rate_limit_sink_captures_engine_names
+    1.10s call     tests/test_engine_manager.py::TestEngineManagerMetadataPartialPreservation::test_partial_returns_username_only_summaries_in_metadata_mode
+    0.77s call     tests/test_httpx_engine.py::TestHttpxEngineGetRecentPosts::test_paginates_to_reach_limit
+    0.57s call     tests/test_perf_02.py::TestReopenModal::test_reopen_modal_handles_exception_gracefully
+    SKIPPED [1] tests\mobile\test_contracts.py:87: extra opcional httpx não instalado
+    SKIPPED [1] tests\test_get_both.py:24: httpx not installed
+    SKIPPED [1] tests\test_get_both.py:7: httpx not installed
+    SKIPPED [1] tests\test_providers.py:201: extra opcional playwright não instalado
+    633 passed, 4 skipped, 5 deselected, 14 subtests passed in 140.29s (0:02:20)
+    [exit 0 | 140.8s]
+
+--- 3a. venv 3.12 com extras httpx e playwright [17:32:48]
+$ <scratchpad>\f0\venv312x\Scripts\python.exe -m pip install -e .[dev,httpx,playwright] -q
+    [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+    [notice] To update, run: <scratchpad>\f0\venv312x\Scripts\python.exe -m pip install --upgrade pip
+    [exit 0 | 17.8s]
+
+--- 3b. suíte offline — venv 3.12 .[dev,httpx,playwright] [17:33:06]
+$ <scratchpad>\f0\venv312x\Scripts\python.exe -m pytest tests -m not e2e and not mobile -p no:cacheprovider -rs --durations=12 -o faulthandler_timeout=600
+    26.12s call     tests/test_login.py::TestInstaLogin::test_fallback_button_click
+    26.04s call     tests/test_login.py::TestInstaLogin::test_successful_login
+    25.55s call     tests/test_failure_scenarios.py::TestExpiredSessionFallsBackToForm::test_stale_cache_redirects_to_login_triggers_form_fallback
+    25.53s call     tests/test_session_cache.py::TestLoginUsesCache::test_login_saves_after_success
+    13.17s call     tests/test_perf_02.py::TestReopenModal::test_reopen_modal_success
+    10.63s setup    tests/test_packaging.py::test_wheel_contains_every_source_package
+    6.37s call     tests/test_challenge_resolvers.py::TestBloksCodeEntryResolver::test_resolve_no_imap_code_returns_false
+    5.97s call     tests/test_login.py::TestInstaLogin::test_invalid_credentials
+    1.39s call     tests/test_skip_persistent_engine.py::TestEngineManagerExcludeEngines::test_rate_limit_sink_captures_engine_names
+    1.11s call     tests/test_engine_manager.py::TestEngineManagerMetadataPartialPreservation::test_partial_returns_username_only_summaries_in_metadata_mode
+    0.77s call     tests/test_httpx_engine.py::TestHttpxEngineGetRecentPosts::test_paginates_to_reach_limit
+    0.57s call     tests/test_perf_02.py::TestReopenModal::test_reopen_modal_handles_exception_gracefully
+    637 passed, 5 deselected, 14 subtests passed in 146.79s (0:02:26)
+    [exit 0 | 147.4s]
+
+--- 4a. ruff [17:35:33]
+$ <scratchpad>\f0\venv312x\Scripts\python.exe -m ruff check instat tests
+    All checks passed!
+    [exit 0 | 0.1s]
+
+--- 4b. mypy [17:35:33]
+$ <scratchpad>\f0\venv312x\Scripts\python.exe -m mypy
+    Success: no issues found in 42 source files
+    [exit 0 | 0.4s]
+
+--- 5a. wheel do código alterado [17:35:33]
+$ <scratchpad>\f0\venv312x\Scripts\python.exe -m build --wheel --outdir <scratchpad>\f0\dist_after
+    
+    !!
+    [exit 0 | 10.1s]
+    pacotes: ['instat', 'instat/config', 'instat/engines', 'instat/mobile']
+    instat/logs no wheel: 0 | cookies.json: 0
+     ['Classifier: Programming Language :: Python :: 3', 'Classifier: Programming Language :: Python :: 3.12', 'Requires-Python: >=3.12']
+
+--- 5b. instalar wheel + extras num venv limpo [17:35:47]
+$ <scratchpad>\f0\venv312wheel\Scripts\python.exe -m pip install <scratchpad>\f0\dist_after\instat-1.0.2-py3-none-any.whl[httpx,playwright,stealth] -q
+    [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+    [notice] To update, run: <scratchpad>\f0\venv312wheel\Scripts\python.exe -m pip install --upgrade pip
+    [exit 0 | 17.5s]
+
+--- 5c. importar fora do checkout [17:36:04]
+$ <scratchpad>\f0\venv312wheel\Scripts\python.exe -c import instat, instat.mobile.engines as me, httpx, playwright, undetected_chromedriver as uc; print('instat', instat.__file__); print('mobile', sorted(me.MOBILE_ENGINE_NAMES)); print('undetected_chromedriver', getattr(uc, '__version__', '?'))
+    instat <scratchpad>\f0\venv312wheel\Lib\site-packages\instat\__init__.py
+    mobile ['android_ui', 'mobile_api']
+    undetected_chromedriver 3.5.5
+    [exit 0 | 0.5s]
+
+--- 5d. dependências resolvidas [17:36:05]
+$ <scratchpad>\f0\venv312wheel\Scripts\python.exe -m pip list
+    httpx                   0.28.1
+    instat                  1.0.2
+    loguru                  0.7.3
+    playwright              1.63.0
+    playwright-stealth      2.0.3
+    selenium                4.49.0
+    setuptools              84.0.0
+    undetected-chromedriver 3.5.5
+    webdriver-manager       4.1.2
+    [exit 0 | 0.3s]
+
+=== fim 2026-09-16 17:36:05

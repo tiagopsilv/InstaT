@@ -102,14 +102,15 @@ class TestShouldStopPropagation(unittest.TestCase):
             ext = InstaExtractor('u', 'p', headless=True)
 
         captured = {}
-        original = ext._engine_manager.extract
 
         def capture(*args, **kwargs):
             captured.update(kwargs)
             return ['x']
 
+        def stop_fn():
+            return True
+
         with patch.object(ext._engine_manager, 'extract', side_effect=capture):
-            stop_fn = lambda: True
             ext.get_followers('target', should_stop=stop_fn)
 
         self.assertIn('should_stop', captured)

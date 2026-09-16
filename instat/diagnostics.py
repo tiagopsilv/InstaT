@@ -36,7 +36,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from loguru import logger
 
-
 _REDACT_COOKIES = {"sessionid", "csrftoken", "ds_user_id", "ig_did"}
 
 

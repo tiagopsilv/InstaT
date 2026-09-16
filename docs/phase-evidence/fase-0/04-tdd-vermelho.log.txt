@@ -1,0 +1,215 @@
+=== F0 passo 4 — rodada vermelha 2026-09-16 16:46:05 | HEAD 5b0b996f7c052367a3b0576e29a74886e3340a0c | código ainda sem alterações
+ M tests/mobile/test_contracts.py
+?? build/
+?? docs/HISTORICO_MOBILE.md
+?? docs/phase-evidence/
+?? tests/test_packaging.py
+?? tests/test_python_policy.py
+
+F..FFFFFFFFF.FFF                                                         [100%]
+================================== FAILURES ===================================
+E   AssertionError: assert ['instat', 'i...stat/engines'] == ['instat', 'i...nstat/mobile']
+      Right contains one more item: 'instat/mobile'
+      Use -v to get more diff
+C:\Projetos\InstaT-wt-f0\tests\test_packaging.py:49: AssertionError: assert ['instat', 'i...stat/engines'] == 
+['instat', 'i...nstat/mobile']
+E   AssertionError: assert 'Requires-Python: >=3.12' in ['Metadata-Version: 2.4', 'Name: instat', 'Version: 1.0.2', 
+'Summary: A robust Instagram data extractor using Selenium...n, scrolling, and profile capture.', 'Author-email: Tiago 
+Pereira da Silva <tiagosilv@gmail.com>', 'License: MIT', ...]
+     +  where ['Metadata-Version: 2.4', 'Name: instat', 'Version: 1.0.2', 'Summary: A robust Instagram data extractor 
+using Selenium...n, scrolling, and profile capture.', 'Author-email: Tiago Pereira da Silva <tiagosilv@gmail.com>', 
+'License: MIT', ...] = <built-in method splitlines of str object at 0x00000242F0BD3EA0>()
+     +    where <built-in method splitlines of str object at 0x00000242F0BD3EA0> = 'Metadata-Version: 2.4\r\nName: 
+instat\r\nVersion: 1.0.2\r\nSummary: A robust Instagram data extractor using Selenium ...silv@gmail.com) · 
+[LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) · [GitHub](https://github.com/tiagopsilv)\r\n'.splitlines
+     +      where 'Metadata-Version: 2.4\r\nName: instat\r\nVersion: 1.0.2\r\nSummary: A robust Instagram data 
+extractor using Selenium ...silv@gmail.com) · [LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) · 
+[GitHub](https://github.com/tiagopsilv)\r\n' = <built-in method decode of bytes object at 0x00000242F0BC9EF0>('utf-8')
+     +        where <built-in method decode of bytes object at 0x00000242F0BC9EF0> = b'Metadata-Version: 2.4\r\nName: 
+instat\r\nVersion: 1.0.2\r\nSummary: A robust Instagram data extractor using Selenium...) \xc2\xb7 
+[LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) \xc2\xb7 [GitHub](https://github.com/tiagopsilv)\r\n'.decode
+     +            where read = <zipfile.ZipFile 
+filename='<temp>' 
+mode='r'>.read
+C:\Projetos\InstaT-wt-f0\tests\test_packaging.py:67: AssertionError: assert 'Requires-Python: >=3.12' in 
+['Metadata-Version: 2.4', 'Name: instat', 'Version: 1.0.2', 'Summary: A robust Instagram data extractor using 
+Selenium...n, scrolling, and profile capture.', 'Author-email: Tiago Pereira da Silva <tiagosilv@gmail.com>', 
+'License: MIT', ...]
+E   AssertionError: assert '>=3.9' == '>=3.12'
+      - >=3.12
+      + >=3.9
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:32: AssertionError: assert '>=3.9' == '>=3.12'
+E   AssertionError: ['3.9', '3.10', '3.11', '3.12']
+    assert False
+     +  where False = all(<generator object test_classifiers_start_at_312.<locals>.<genexpr> at 0x00000242F1A718A0>)
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:38: AssertionError: ['3.9', '3.10', '3.11', '3.12']
+E   AssertionError: assert {'3.10', '3.1...'3.12', '3.9'} <= {'3.10', '3.12', '3.9'}
+      Extra items in the left set:
+      '3.11'
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:42: AssertionError: assert {'3.10', '3.1...'3.12', '3.9'} <= 
+{'3.10', '3.12', '3.9'}
+E   AssertionError: (['3.9', '3.10', '3.12'], ['3.12', '3.12'])
+    assert False
+     +  where False = all(<generator object test_ci_versions_respect_minimum.<locals>.<genexpr> at 0x00000242F1A728E0>)
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:49: AssertionError: (['3.9', '3.10', '3.12'], ['3.12', '3.12'])
+E   assert None
+     +  where None = <function search at 0x00000242EDE879C0>('pip install -e "\\.\\[dev,httpx,playwright\\]"', 'name: 
+CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n\njobs:\n  lint-and-type:\n   ...e: 
+Upload dist\n        uses: actions/upload-artifact@v4\n        with:\n          name: dist\n          path: dist/\n')
+     +    where <function search at 0x00000242EDE879C0> = re.search
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:53: assert None
+E   AssertionError: assert 'instat.mobile.engines' in 'name: CI\n\non:\n  push:\n    branches: [main]\n  
+pull_request:\n    branches: [main]\n\njobs:\n  lint-and-type:\n   ...e: Upload dist\n        uses: 
+actions/upload-artifact@v4\n        with:\n          name: dist\n          path: dist/\n'
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:57: AssertionError: assert 'instat.mobile.engines' in 'name: 
+CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n\njobs:\n  lint-and-type:\n   ...e: 
+Upload dist\n        uses: actions/upload-artifact@v4\n        with:\n          name: dist\n          path: dist/\n'
+E   AssertionError: assert 'py39' == 'py312'
+      - py312
+      + py39
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:61: AssertionError: assert 'py39' == 'py312'
+E   AssertionError: assert 'python-3.12%2B' in '# InstaT — Instagram Data 
+Extractor\n\n[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.p...gosilv@gmail.com) · 
+[LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) · [GitHub](https://github.com/tiagopsilv)\n'
+C:\Projetos\InstaT-wt-f0\tests\test_python_policy.py:67: AssertionError: assert 'python-3.12%2B' in '# InstaT — 
+Instagram Data 
+Extractor\n\n[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.p...gosilv@gmail.com) · 
+[LinkedIn](https://www.linkedin.com/in/tiagopsilvatec) · [GitHub](https://github.com/tiagopsilv)\n'
+E   AssertionError: Regex pattern did not match.
+      Expected regex: '\\bF7\\b'
+      Actual message: "AndroidUiEngine.login ainda não implementado — ver Fase 1 do docs/ROADMAP_MOBILE.md. Até lá, 
+coloque 'android_ui' atrás de um engine funcional na cascata (ex.: selenium/httpx)."
+C:\Projetos\InstaT-wt-f0\tests\mobile\test_contracts.py:53: AssertionError: Regex pattern did not match.
+E   AssertionError: Regex pattern did not match.
+      Expected regex: '\\bF8\\b'
+      Actual message: "MobileApiEngine.login ainda não implementado — ver Fase 5 do docs/ROADMAP_MOBILE.md. Até lá, 
+coloque 'mobile_api' atrás de um engine funcional na cascata (ex.: selenium/httpx)."
+C:\Projetos\InstaT-wt-f0\tests\mobile\test_contracts.py:53: AssertionError: Regex pattern did not match.
+E   NotImplementedError: AndroidUiEngine.login ainda não implementado — ver Fase 1 do docs/ROADMAP_MOBILE.md. Até lá, 
+coloque 'android_ui' atrás de um engine funcional na cascata (ex.: selenium/httpx).
+The above exception was the direct cause of the following exception:
+E   instat.exceptions.LoginError: Failed to login as u
+---------------------------- Captured stderr call -----------------------------
+2026-09-16 16:46:10.229 | ERROR    | instat.extractor:__init__:235 - 
+Login failed during InstaExtractor initialization: AndroidUiEngine.login ainda não implementado — ver Fase 1 
+do docs/ROADMAP_MOBILE.md. Até lá, coloque 'android_ui' atrás de um engine funcional na cascata (ex.: 
+selenium/httpx).
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pytest\__main__.py", line 9, in <module>
+    raise SystemExit(_console_main())
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\config\__init__.py", line 253, in _console_main
+    code = _main(prog=_get_prog_name(sys.argv))
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\config\__init__.py", line 229, in _main
+    ret: ExitCode | int = config.hook.pytest_cmdline_main(config=config)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\main.py", line 377, in pytest_cmdline_main
+    return wrap_session(config, _main)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\main.py", line 330, in wrap_session
+    session.exitstatus = doit(config, session) or 0
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\main.py", line 384, in _main
+    config.hook.pytest_runtestloop(session=session)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\main.py", line 408, in pytest_runtestloop
+    item.config.hook.pytest_runtest_protocol(item=item, nextitem=nextitem)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 118, in pytest_runtest_protocol
+    runtestprotocol(item, nextitem=nextitem)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 139, in runtestprotocol
+    reports.append(call_and_report(item, "call", log))
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 249, in call_and_report
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 361, in from_call
+    result: TResult | None = func()
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 250, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\runner.py", line 184, in pytest_runtest_call
+    item.runtest()
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\python.py", line 1707, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "<scratchpad>\f0\
+venv312\Lib\site-packages\_pytest\python.py", line 167, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "C:\Projetos\InstaT-wt-f0\tests\mobile\test_contracts.py", line 62, in 
+test_mobile_stub_as_primary_engine_fails_fast_citing_phase
+    InstaExtractor("u", "p", 
+engines=["android_ui", "selenium"])
+> File "C:\Projetos\InstaT-wt-f0\instat\extractor.py", line 229, in __init__
+    primary_engine.login(username, password)
+  File "C:\Projetos\InstaT-wt-f0\instat\mobile\engines.py", line 45, in login
+    raise self._not_yet("login")
+NotImplementedError: AndroidUiEngine.login ainda não implementado — ver Fase 1 do 
+docs/ROADMAP_MOBILE.md. Até lá, coloque 'android_ui' atrás de um engine funcional na cascata (ex.: selenium/httpx).
+C:\Projetos\InstaT-wt-f0\instat\extractor.py:236: instat.exceptions.LoginError: Failed to login as u
+FAILED tests/test_packaging.py::test_wheel_contains_every_source_package - As...
+FAILED tests/test_packaging.py::test_wheel_requires_python_312 - AssertionErr...
+FAILED tests/test_python_policy.py::test_requires_python_is_312 - AssertionEr...
+FAILED tests/test_python_policy.py::test_classifiers_start_at_312 - Assertion...
+FAILED tests/test_python_policy.py::test_declared_versions_are_tested_in_ci
+FAILED tests/test_python_policy.py::test_ci_versions_respect_minimum - Assert...
+FAILED tests/test_python_policy.py::test_ci_installs_optional_extras_used_by_tests
+FAILED tests/test_python_policy.py::test_ci_smoke_tests_installed_wheel_outside_checkout
+FAILED tests/test_python_policy.py::test_tool_targets_312 - AssertionError: a...
+FAILED tests/test_python_policy.py::test_readme_states_312 - AssertionError: ...
+FAILED tests/mobile/test_contracts.py::test_mobile_stub_messages_cite_current_roadmap_phase[AndroidUiEngine-F7]
+FAILED tests/mobile/test_contracts.py::test_mobile_stub_messages_cite_current_roadmap_phase[MobileApiEngine-F8]
+FAILED tests/mobile/test_contracts.py::test_mobile_stub_as_primary_engine_fails_fast_citing_phase
+
+
+=== fim 2026-09-16 16:46:10

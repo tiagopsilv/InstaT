@@ -47,6 +47,21 @@ def test_mobile_engines_are_stubs_that_fail_loud(cls):
         eng.extract("target", "followers")
 
 
+@pytest.mark.parametrize("cls,phase", [(AndroidUiEngine, "F7"), (MobileApiEngine, "F8")])
+def test_mobile_stub_messages_cite_current_roadmap_phase(cls, phase):
+    """A mensagem aponta a fase atual do roadmap (F7/F8), não a numeração da v10."""
+    with pytest.raises(NotImplementedError, match=rf"\b{phase}\b"):
+        cls().login("u", "p")
+
+
+def test_mobile_stub_as_primary_engine_fails_fast_citing_phase():
+    """Stub como engine primária falha na construção, antes de qualquer login,
+    com NotImplementedError citando a fase — não com LoginError genérico."""
+    from instat.extractor import InstaExtractor
+    with pytest.raises(NotImplementedError, match=r"\bF7\b"):
+        InstaExtractor("u", "p", engines=["android_ui", "selenium"])
+
+
 def test_mobile_engines_implement_full_abstract_surface():
     """Não deve sobrar método abstrato (senão a classe nem instancia)."""
     for cls in (MobileApiEngine, AndroidUiEngine):
@@ -69,6 +84,7 @@ def test_build_engines_recognizes_mobile_names():
 
 def test_build_engines_mixed_cascade_keeps_existing_engines():
     """Mistura mobile + httpx: os nomes novos não atrapalham os antigos."""
+    pytest.importorskip("httpx", reason="extra opcional httpx não instalado")
     ext = InstaExtractorNoInit()
     built = ext._build_engines(
         ["mobile_api", "android_ui", "httpx"], headless=True, timeout=10

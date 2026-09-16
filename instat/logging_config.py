@@ -31,7 +31,6 @@ from typing import Optional
 
 from loguru import logger
 
-
 _DEFAULT_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
     "<level>{level: <8}</level> | "

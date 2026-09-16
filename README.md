@@ -1,6 +1,6 @@
 # InstaT — Instagram Data Extractor
 
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-590%20passing-brightgreen.svg)](tests/)
 
@@ -56,7 +56,7 @@ pip install 'instat[stealth]'                       # + undetected-chromedriver 
 pip install 'instat[playwright,httpx,stealth,dev]'  # everything
 ```
 
-**Requirements:** Python ≥ 3.9, Firefox (GeckoDriver auto-installed via `webdriver-manager`).
+**Requirements:** Python ≥ 3.12, Firefox (GeckoDriver auto-installed via `webdriver-manager`).
 
 For Playwright: `playwright install chromium` after pip-install.
 

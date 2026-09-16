@@ -4,6 +4,17 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
 
 ## [Unreleased]
 
+### Changed — BREAKING
+- **Python mínimo passa a ser 3.12** (`requires-python = ">=3.12"`). Instalações em 3.9, 3.10 e 3.11 deixam de ser suportadas; o pip recusa instalar nessas versões. Classificadores, `ruff`, `mypy`, README e matriz de CI alinhados. 3.13 e 3.14 só serão declarados com evidência de instalação e suíte. A versão do pacote não foi alterada aqui: a quebra pede bump major no próximo release, a decidir.
+
+### Fixed
+- **Wheel sem `instat.mobile`:** `pyproject.toml` listava os pacotes à mão e omitia `instat.mobile`; instalado por wheel, `engines=["android_ui"]` virava apenas um aviso de engine desconhecida. A descoberta passa a ser automática (`packages.find`), com `namespaces = false` e exclusão de `instat.logs*`, para que diretórios de diagnóstico nunca entrem no pacote.
+- **Stub mobile como engine primária** passa a falhar na construção com `NotImplementedError` citando a fase do roadmap (F7/F8), em vez de `LoginError` genérico.
+- **Testes dependentes de extras opcionais** (`httpx`, `playwright`) passam a pular explicitamente quando o extra falta; o CI instala os extras para executá-los.
+- **Extra `stealth` em Python 3.12:** `undetected-chromedriver` 3.5.5 importa `distutils`, removido do Python 3.12, e falhava com `ModuleNotFoundError`. O extra passa a declarar `setuptools>=60`, que fornece a camada de compatibilidade. Só a importação foi verificada; o modo stealth em execução exige Chrome e não foi testado.
+- **Teste que abria navegador real:** `test_account_rotation.py::test_inherits_imap_config_engines_timeout` usava `patch(..., side_effect=InstaExtractor)`, construindo o extractor real — abria um Firefox visível, tentava login com credenciais falsas e deixava o navegador aberto, travando quem aguardava a saída da suíte. Agora o mock só captura os argumentos.
+- **`ruff`:** cinco erros que já existiam antes desta mudança (ordem de imports em `diagnostics.py`, `logging_config.py` e `post_metrics.py`; variável não usada e `lambda` atribuída em `tests/test_recent_gaps.py`) corrigidos, para o job de lint passar.
+
 ### Added
 - **Post metrics** — `extractor.get_recent_posts(profile_id, limit=N)` returns `List[PostMetrics]` (shortcode, likes_count, comments_count, timestamp, caption, hashtags, media_type, media_url) via `HttpxEngine` paginating the private `/feed/user/{user_id}/` endpoint. Feeds engagement formulas (TEP) without the consumer scraping post pages itself. Other engines raise `NotImplementedError` so the cascade falls through.
 - **Rich follower metadata** — `get_followers(..., with_metadata=True)` and `get_following(..., with_metadata=True)` return `List[ProfileSummary]` instead of `List[str]`. Populates `user_id` (numeric `pk`), `full_name`, `is_verified`, `is_private`, `is_business`, `profile_pic_url` from the IG private API. Selenium/Playwright degrade gracefully to username-only summaries.
