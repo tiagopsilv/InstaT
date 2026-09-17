@@ -1,0 +1,45 @@
+# Workflow TEMPORÁRIO da pendência B02 (branch ci/b02-diagnostico, PR "somente CI", não mesclar).
+# Mede a distribuição da latência do heartbeat do cenário B02 no runner do GitHub.
+name: B02 diagnóstico
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  b02:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Ambiente do runner
+        run: |
+          nproc; free -m; df -h .; python -c "import sqlite3; print('sqlite', sqlite3.sqlite_version)"
+      - name: Diagnóstico (25 repetições por condição)
+        run: python docs/phase-evidence/pendencia-b02/b02_diagnostico.py 25
+      - name: Cenário B02 original repetido 40 vezes
+        run: |
+          pass=0; fail=0
+          for i in $(seq 1 40); do
+            if pytest tests/jobstore/test_e3.py -k "B02" -p no:cacheprovider -q --tb=line > b02_run_$i.txt 2>&1; then
+              pass=$((pass+1)); else fail=$((fail+1)); grep -E "AssertionError" b02_run_$i.txt | head -1; fi
+          done
+          echo "B02 original: $pass passed, $fail failed de 40" | tee b02_original_resumo.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: b02-py${{ matrix.python-version }}
+          path: |
+            docs/phase-evidence/pendencia-b02/b02_*.json
+            b02_original_resumo.txt
