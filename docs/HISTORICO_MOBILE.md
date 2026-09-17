@@ -37,10 +37,15 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | F1 | **entregue — sete passos executados; CI ok** (run 35152282343: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-1/` | `923a9ad` (testes vermelhos), `5255349` (implementação); PR #5 (rascunho, base F0); PR #6 de CI fechado sem merge |
 | F2 | **entregue — sete passos executados; CI ok** (run 35166815188: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-2/` | `2e9f91c` (vermelho), `6cf5fbb` (implementação); PR #7 (rascunho, base F1); PR #8 de CI fechado sem merge |
 | F5 | **entregue — sete passos executados; CI ok** (run 35215371605: lint, 3.12, 3.13, build). Mutações 8/8; intermitência do E1 no Windows corrigida | 16/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-5/` | `6a6ad53` (vermelho), `b6c5ed4` (implementação); PR #9 (rascunho, base F2); PR #10 de CI fechado sem merge |
-| F3, F6, F7 | não iniciadas | — | — | — | — |
+| F3 | **entregue — sete passos executados; CI ok na reexecução** (run 35217993911; 1ª execução falhou no cenário B02 da F5 por latência de heartbeat 0,529 s > 0,5 s — intermitência pendente de investigação) | 17/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-3/` | `b5569c2`, `ad36b5c` (vermelhos), `96ac838` (implementação); PR #11 (rascunho, base F5); PR #12 de CI fechado sem merge |
+| F6, F7 | não iniciadas | — | — | — | — |
 | F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 
 ## Desvios registrados
 
 - **Fase 0 antiga / `6175e5b` (14/09/2026):** esqueleto `instat/mobile` e teste de contrato foram escritos antes do ritual (sem log vermelho registrado). Não há TDD retroativo; o desvio fica registrado aqui.
 - **Relato da auditoria v13.6 (15/09/2026):** "suíte offline passa" foi verificado só no ambiente global com extras instalados. Reproduzido na F0 em venv limpo: 2 falhas de teste dependentes de extras.
+
+## Pendências abertas
+
+- **B02 (F5) intermitente no CI:** latência do heartbeat 0,529 s > 0,5 s uma vez em 3.13/Linux; a reexecução passou. Medir a distribuição antes de mexer no limite ou no desenho.

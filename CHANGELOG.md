@@ -41,6 +41,18 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
   - `RateLimitError` ganhou `retry_after`.
 - **`Utils.wait_for_new_profiles`:** o laço em `StaleElementReferenceException` passou a ter teto (5).
 
+### Changed — metadados de perfil sem Selenium (F3)
+- **`InstaExtractor.get_profile` não exige mais `_driver`.**
+  - Delega para engines com a capacidade `profile_info`: Selenium lê o DOM como antes; `HttpxEngine` usa `web_profile_info`.
+  - Engines e objetos legados que só expõem `_driver` continuam no leitor DOM original.
+  - Sem engine capaz, continua `RuntimeError`, agora com mensagem que lista as capacidades de cada engine e extras não instalados (`pip install instat[httpx]`).
+  - Uma parada terminal do governador (challenge, restrição, 429, proxy) levanta `ExtractionStoppedError`.
+- **Capacidades explícitas:**
+  - `BaseEngine.capabilities`, derivada dos métodos sobrescritos ou declarada pela engine;
+  - `BaseEngine.get_profile_info`, não abstrato: subclasses existentes continuam instanciáveis;
+  - novo `instat.profile_info.ProfileInfo`.
+- **Teste de contrato:** a parte B não injeta mais `_FakeDriver`; o snippet público roda com engine sem `_driver`.
+
 ### Added — persistência de jobs (F5)
 - **`instat.jobstore`** (roadmap §6.3): jobs, execuções, páginas, membros e observações em SQLite (WAL).
   - **Garantias:**

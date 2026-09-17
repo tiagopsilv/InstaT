@@ -19,6 +19,7 @@ try:
     from instat.config.selector_loader import SelectorLoader
     from instat.constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE
     from instat.engines.base import BaseEngine
+    from instat.exceptions import BlockedError
     from instat.login import InstaLogin
     from instat.modal_interaction import ModalInteraction
     from instat.scroll_loop import ScrollLoop
@@ -30,6 +31,7 @@ except ImportError:
     from config.selector_loader import SelectorLoader
     from constants import PROFILE_WAIT_INTERVAL, SCROLL_PAUSE
     from engines.base import BaseEngine
+    from exceptions import BlockedError  # type: ignore
     from login import InstaLogin
     from modal_interaction import ModalInteraction  # type: ignore
     from scroll_loop import ScrollLoop  # type: ignore
@@ -156,6 +158,16 @@ class SeleniumEngine(BaseEngine):
                 from profile_summary import ProfileSummary  # type: ignore
             return [ProfileSummary.from_username(u) for u in result]
         return set(result)
+
+    def get_profile_info(self, profile_id: str):
+        """Metadados do cabeçalho via DOM (og tags + heurísticas)."""
+        if self._driver is None:
+            raise BlockedError(f'{self.name}: not logged in (no driver)')
+        try:
+            from instat.profile_readers import read_profile_from_driver
+        except ImportError:
+            from profile_readers import read_profile_from_driver  # type: ignore
+        return read_profile_from_driver(self._driver, profile_id)
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         link = self._navigate_and_get_link(profile_id, list_type)

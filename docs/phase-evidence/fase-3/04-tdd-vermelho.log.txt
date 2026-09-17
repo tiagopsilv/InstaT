@@ -1,0 +1,27 @@
+﻿
+=================================== ERRORS ====================================
+____________ ERROR collecting tests/test_f3_profile_capability.py _____________
+ImportError while importing test module 'C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_f3_profile_capability.py:12: in <module>
+    from instat.profile_info import ProfileInfo
+E   ModuleNotFoundError: No module named 'instat.profile_info'
+_____________ ERROR collecting tests/test_public_api_contract.py ______________
+ImportError while importing test module 'C:\Projetos\InstaT-wt-f3\tests\test_public_api_contract.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_public_api_contract.py:136: in <module>
+    from instat.profile_info import ProfileInfo  # noqa: E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'instat.profile_info'
+=========================== short test summary info ===========================
+ERROR tests/test_f3_profile_capability.py
+ERROR tests/test_public_api_contract.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!

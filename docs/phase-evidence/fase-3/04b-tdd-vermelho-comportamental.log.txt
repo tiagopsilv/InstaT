@@ -1,0 +1,66 @@
+﻿FFFFFFFFFF.F........F                                                    [100%]
+================================== FAILURES ===================================
+E   AttributeError: 'LegacyEngine' object has no attribute 'capabilities'
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:68: AttributeError: 'LegacyEngine' object has no attribute 'capabilities'
+E   AssertionError: assert ('minha-engine' in 'get_profile requires a Selenium-based engine')
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.196[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: u[0m
+[32m2026-09-17 08:36:33.197[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as u[0m
+[32m2026-09-17 08:36:33.197[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 1 engines: ['minha-engine'][0m
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:79: AssertionError: assert ('minha-engine' in 'get_profile requires a Selenium-based engine')
+E   RuntimeError: get_profile requires a Selenium-based engine
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.199[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: u[0m
+[32m2026-09-17 08:36:33.199[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as u[0m
+[32m2026-09-17 08:36:33.199[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 2 engines: ['legacy', 'capable'][0m
+C:\Projetos\InstaT-wt-f3\instat\extractor.py:399: RuntimeError: get_profile requires a Selenium-based engine
+E   RuntimeError: get_profile requires a Selenium-based engine
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.200[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: u[0m
+[32m2026-09-17 08:36:33.200[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as u[0m
+[32m2026-09-17 08:36:33.200[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 2 engines: ['c1', 'c2'][0m
+C:\Projetos\InstaT-wt-f3\instat\extractor.py:399: RuntimeError: get_profile requires a Selenium-based engine
+E   RuntimeError: get_profile requires a Selenium-based engine
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.201[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: u[0m
+[32m2026-09-17 08:36:33.201[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as u[0m
+[32m2026-09-17 08:36:33.201[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 2 engines: ['c1', 'c2'][0m
+C:\Projetos\InstaT-wt-f3\instat\extractor.py:399: RuntimeError: get_profile requires a Selenium-based engine
+E   AttributeError: 'HttpxEngine' object has no attribute 'get_profile_info'
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:131: AttributeError: 'HttpxEngine' object has no attribute 'get_profile_info'
+E   AttributeError: 'HttpxEngine' object has no attribute 'get_profile_info'
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:139: AttributeError: 'HttpxEngine' object has no attribute 'get_profile_info'
+E   AttributeError: 'SeleniumEngine' object has no attribute 'get_profile_info'
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:176: AttributeError: 'SeleniumEngine' object has no attribute 'get_profile_info'
+E   ImportError: cannot import name 'profile_readers' from 'instat' (C:\Projetos\InstaT-wt-f3\instat\__init__.py)
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:182: ImportError: cannot import name 'profile_readers' from 'instat' (C:\Projetos\InstaT-wt-f3\instat\__init__.py)
+E   AttributeError: 'SeleniumEngine' object has no attribute 'capabilities'
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:192: AttributeError: 'SeleniumEngine' object has no attribute 'capabilities'
+E   AssertionError: assert 'pip install instat[httpx]' in 'get_profile requires a Selenium-based engine'
+     +  where 'get_profile requires a Selenium-based engine' = str(RuntimeError('get_profile requires a Selenium-based engine'))
+     +    where RuntimeError('get_profile requires a Selenium-based engine') = <ExceptionInfo RuntimeError('get_profile requires a Selenium-based engine') tblen=2>.value
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.234[0m | [33m[1mWARNING [0m | [36minstat.extractor[0m:[36m_build_engines[0m:[36m311[0m - [33m[1mhttpx requested but not installed — skipping[0m
+[32m2026-09-17 08:36:33.234[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: u[0m
+[32m2026-09-17 08:36:33.234[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as u[0m
+[32m2026-09-17 08:36:33.234[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 1 engines: ['primaria'][0m
+C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py:215: AssertionError: assert 'pip install instat[httpx]' in 'get_profile requires a Selenium-based engine'
+E   RuntimeError: get_profile requires a Selenium-based engine
+---------------------------- Captured stderr call -----------------------------
+[32m2026-09-17 08:36:33.237[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m230[0m - [1mInitializing InstaExtractor with username: your_user[0m
+[32m2026-09-17 08:36:33.238[0m | [1mINFO    [0m | [36minstat.extractor[0m:[36m__init__[0m:[36m240[0m - [1mLogged in successfully as your_user[0m
+[32m2026-09-17 08:36:33.238[0m | [1mINFO    [0m | [36minstat.engines.engine_manager[0m:[36m__init__[0m:[36m79[0m - [1mEngineManager initialized with 1 engines: ['fake'][0m
+C:\Projetos\InstaT-wt-f3\instat\extractor.py:399: RuntimeError: get_profile requires a Selenium-based engine
+=========================== short test summary info ===========================
+FAILED tests/test_f3_profile_capability.py::test_legacy_subclass_still_instantiable_and_declares_no_profile_info
+FAILED tests/test_f3_profile_capability.py::test_get_profile_with_only_legacy_engine_explains_missing_capability
+FAILED tests/test_f3_profile_capability.py::test_primary_without_capability_falls_to_capable_secondary
+FAILED tests/test_f3_profile_capability.py::test_challenge_on_profile_info_stops_cascade
+FAILED tests/test_f3_profile_capability.py::test_not_implemented_and_technical_errors_go_to_next_engine
+FAILED tests/test_f3_profile_capability.py::test_httpx_profile_info_from_web_profile_info
+FAILED tests/test_f3_profile_capability.py::test_httpx_profile_info_404 - Att...
+FAILED tests/test_f3_profile_capability.py::test_selenium_profile_info_matches_legacy_reader
+FAILED tests/test_f3_profile_capability.py::test_profile_readers_module_is_shared_by_selenium_and_legacy_path
+FAILED tests/test_f3_profile_capability.py::test_capability_matrix - Attribut...
+FAILED tests/test_f3_profile_capability.py::test_message_cites_missing_extra
+FAILED tests/test_public_api_contract.py::test_contract_snippet_runs_end_to_end_with_fake_engine

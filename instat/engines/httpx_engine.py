@@ -455,6 +455,51 @@ class HttpxEngine(BaseEngine):
 
         return summaries if with_metadata else profiles
 
+    def get_profile_info(self, profile_id: str):
+        """Metadados do cabeçalho via users/web_profile_info (sem browser)."""
+        try:
+            from instat.profile_info import ProfileInfo
+        except ImportError:
+            from profile_info import ProfileInfo  # type: ignore
+        if not self._client:
+            raise BlockedError(f'{self.name}: not logged in')
+        try:
+            r = self._client.get(f'{BASE_URL}/users/web_profile_info/',
+                                 params={'username': profile_id})
+        except Exception as e:
+            raise self._request_error('profile info request failed', e) from e
+        if r.status_code == 404:
+            raise ProfileNotFoundError(f'{self.name}: user {profile_id} not found')
+        self._raise_for_status(r, 'profile info')
+        try:
+            user = r.json()['data']['user']
+        except Exception as e:
+            raise BlockedError(f'{self.name}: malformed profile info response') from e
+        if not isinstance(user, dict):
+            raise BlockedError(f'{self.name}: malformed profile info response')
+
+        def _count(key):
+            edge = user.get(key)
+            value = edge.get('count') if isinstance(edge, dict) else None
+            return value if isinstance(value, int) else None
+
+        def _flag(key):
+            value = user.get(key)
+            return value if isinstance(value, bool) else None
+
+        return ProfileInfo(
+            username=user.get('username') or profile_id,
+            url=f'https://www.instagram.com/{profile_id}/',
+            full_name=user.get('full_name') or None,
+            bio=user.get('biography') or None,
+            followers_count=_count('edge_followed_by'),
+            following_count=_count('edge_follow'),
+            posts_count=_count('edge_owner_to_timeline_media'),
+            is_private=_flag('is_private'),
+            is_verified=_flag('is_verified'),
+            profile_pic_url=user.get('profile_pic_url_hd') or user.get('profile_pic_url') or None,
+        )
+
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         """Contagem via web_profile_info (edge_followed_by / edge_follow)."""
         if not self._client:

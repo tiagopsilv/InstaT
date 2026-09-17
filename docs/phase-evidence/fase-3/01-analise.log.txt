@@ -1,0 +1,20 @@
+=== M1 engine sem _driver (legada, sem capacidade de perfil)
+   RuntimeError: get_profile requires a Selenium-based engine
+=== M2 engine com dados de perfil, sem _driver
+   RuntimeError: get_profile requires a Selenium-based engine
+=== M3 parte B do contrato sem o _FakeDriver
+   com _driver injetado: ok: alvo Target Name 1894
+   sem _driver:           RuntimeError: get_profile requires a Selenium-based engine
+=== M4 subclasse legada instanciável
+   LegacyEngine ok
+=== M5 inventário de dependências de _driver fora de selenium/playwright/login
+   instat/engines/engine_manager.py:247:            driver = getattr(other, '_driver', None)
+   instat/engines/engine_manager.py:251:                    f"has no live _driver"
+   instat/engines/engine_manager.py:308:                f"live _driver (checked {len(self.engines) - 1} peer(s))"
+   instat/extractor.py:238:                self.driver = getattr(primary_engine, '_driver', None)
+   instat/extractor.py:239:                self.insta_login = getattr(primary_engine, '_login_obj', None)
+   instat/extractor.py:246:            self.driver = None
+   instat/extractor.py:247:            self.insta_login = None
+   instat/extractor.py:397:        driver = getattr(self._engine, '_driver', None)
+   instat/extractor.py:1175:                driver = getattr(self._engine, '_driver', None)
+   instat/extractor.py:1223:            driver = getattr(self._engine, '_driver', None)

@@ -1,0 +1,3 @@
+C:\Projetos\InstaT-wt-f3\instat\engines\selenium_engine.py:163: NameError: name 'BlockedError' is not defined
+=========================== short test summary info ===========================
+FAILED tests/test_f3_profile_capability.py::test_selenium_profile_info_without_driver_is_technical_blocked_error

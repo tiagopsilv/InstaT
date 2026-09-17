@@ -1,0 +1,2 @@
+=========================== short test summary info ===========================
+FAILED tests/test_f3_profile_capability.py::test_explicit_capabilities_opt_in_overrides_derivation

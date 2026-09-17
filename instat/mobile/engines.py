@@ -33,6 +33,8 @@ class _StubMobileEngine(BaseEngine):
 
     _NAME: str = "mobile"
     _PHASE: str = "?"
+    # Stubs não oferecem nenhuma capacidade até a fase correspondente.
+    capabilities = frozenset()  # type: ignore[assignment]
 
     def not_implemented_error(self, what: str) -> NotImplementedError:
         return NotImplementedError(
