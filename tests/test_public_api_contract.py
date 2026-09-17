@@ -21,7 +21,6 @@ O snippet-contrato (tem que continuar funcionando byte a byte):
     ext.quit()
 """
 import inspect
-import re
 from typing import List, Optional, Set
 
 from instat import InstaExtractor
@@ -126,44 +125,24 @@ def test_profile_exposes_snippet_attributes():
 
 # --------------------------------------------------------------------------
 # Parte B — o snippet-contrato roda ponta a ponta com engine falsa (sem rede)
+#
+# Reescrita na F3 (roadmap R12): a versão anterior injetava `_FakeDriver` em
+# `_driver` e travava o acoplamento de get_profile() ao Selenium. Agora a
+# engine fake NÃO tem `_driver`; os metadados chegam pela capacidade
+# `get_profile_info`, atravessando a delegação real
+# InstaExtractor.get_profile → EngineManager → engine.
 # --------------------------------------------------------------------------
 
-class _FakeEl:
-    def __init__(self, content: str):
-        self._content = content
-
-    def get_attribute(self, _name: str):
-        return self._content
-
-
-class _FakeDriver:
-    """Driver mínimo que get_profile() consegue interrogar sem browser."""
-
-    def __init__(self, meta):
-        self._meta = meta
-        self.last_url = None
-
-    def get(self, url):
-        self.last_url = url
-
-    def find_element(self, _by, selector):
-        m = re.search(r'property="([^"]+)"', selector)
-        prop = m.group(1) if m else ""
-        if prop in self._meta:
-            return _FakeEl(self._meta[prop])
-        raise RuntimeError("element not found")
-
-    def execute_script(self, _script, *_args):
-        # bio / verified / private — None/False são respostas válidas
-        return None
+from instat.profile_info import ProfileInfo  # noqa: E402
 
 
 class _FakeEngine(BaseEngine):
-    """Engine em memória: sem rede, sem browser. Implementa o contrato."""
+    """Engine em memória: sem rede, sem browser e sem `_driver`."""
 
-    def __init__(self, followers, following, meta):
-        self._driver = _FakeDriver(meta)
+    def __init__(self, followers, following, info):
         self._data = {"followers": list(followers), "following": list(following)}
+        self._info = info
+        self.profile_info_calls = []
 
     def login(self, username: str, password: str, **kwargs) -> bool:
         return True
@@ -176,6 +155,10 @@ class _FakeEngine(BaseEngine):
 
     def get_total_count(self, profile_id: str, list_type: str) -> Optional[int]:
         return len(self._data[list_type])
+
+    def get_profile_info(self, profile_id: str) -> ProfileInfo:
+        self.profile_info_calls.append(profile_id)
+        return self._info
 
     def quit(self) -> None:
         pass
@@ -190,17 +173,15 @@ class _FakeEngine(BaseEngine):
 
 
 def test_contract_snippet_runs_end_to_end_with_fake_engine():
-    """Executa o fluxo EXATO do snippet-contrato com uma engine falsa."""
-    meta = {
-        "og:description": "1,894 Followers, 1,892 Following, 123 Posts - @target",
-        "og:title": "Target Name (@target) • Instagram photos and videos",
-        "og:image": "https://example.test/pic.jpg",
-    }
+    """Executa o fluxo EXATO do snippet-contrato com uma engine falsa sem `_driver`."""
     fake = _FakeEngine(
         followers=["alice", "bob", "carol"],
         following=["dave", "erin"],
-        meta=meta,
+        info=ProfileInfo(username="target", url="https://www.instagram.com/target/",
+                         full_name="Target Name", followers_count=1894,
+                         following_count=1892, posts_count=123),
     )
+    assert not hasattr(fake, "_driver")
 
     ext = InstaExtractor(
         username="your_user",
@@ -210,6 +191,7 @@ def test_contract_snippet_runs_end_to_end_with_fake_engine():
     )
 
     target = ext.get_profile("target")
+    assert fake.profile_info_calls == ["target"], "get_profile não atravessou a delegação real"
     assert isinstance(target, Profile)
     assert target.username == "target"
     assert target.full_name == "Target Name"
