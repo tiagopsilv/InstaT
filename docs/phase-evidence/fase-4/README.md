@@ -177,3 +177,7 @@ Renderizados a partir dos logs reais da disputa (processos locais, serviço fake
 | [`01-pool.png`](01-pool.png) | 3 s de posse por conta com p0 (azul) e p1 (laranja) alternando sem sobreposição; workers lentos hachurados; `a_bloqueada` sem nenhuma barra; tabela: 0 sobreposições, 0 concessões bloqueadas, 0 erros |
 | [`02-lease-expirado.png`](02-lease-expirado.png) | worker lento segura até o `lease_until` (0,5 s); o outro processo só assume depois; 8 linhas de commits tardios, todas `rejected:posse`; "commits tardios: N, aceitos: 0" |
 | [`03-worker-obsoleto.png`](03-worker-obsoleto.png) | concessão de p0 (azul) do kill (vermelho) até o fim (tracejado); p1 só pega a mesma conta depois do tracejado (`≥ fim da de p0: True`); `release_lease` com token antigo = False; nova posse válida; `a_bloqueada` não concedida (`needs_attention`) |
+
+## Aceite de CI
+
+Run `35237933020` no PR #14 (somente CI, fechado sem merge), em Linux: lint-and-type ✅, test 3.12 ✅, test 3.13 ✅, build ✅, todos na primeira execução. A disputa entre processos também rodou no CI.
