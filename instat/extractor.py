@@ -278,6 +278,8 @@ class InstaExtractor:
             from engines.playwright_engine import PlaywrightEngine
 
         built = []
+        if not hasattr(self, '_skipped_engines'):
+            self._skipped_engines: Dict[str, str] = {}
         for item in spec:
             if isinstance(item, BaseEngine):
                 if item.is_available:
@@ -298,6 +300,7 @@ class InstaExtractor:
                 if eng.is_available:
                     built.append(eng)
                 else:
+                    self._skipped_engines['playwright'] = "extra not installed — pip install instat[playwright]"
                     logger.warning("playwright requested but not installed — skipping")
             elif name == 'httpx':
                 try:
@@ -308,6 +311,7 @@ class InstaExtractor:
                 if eng.is_available:
                     built.append(eng)
                 else:
+                    self._skipped_engines['httpx'] = "extra not installed — pip install instat[httpx]"
                     logger.warning("httpx requested but not installed — skipping")
             elif name in _MOBILE_ENGINE_NAMES:
                 # Opt-in mobile (roadmap §3.1): reconhecidos como engines
@@ -382,133 +386,75 @@ class InstaExtractor:
 
     def get_profile(self, profile_id: str):
         """
-        Navega ao perfil 1 vez e extrai metadata barato do header
-        (contadores, full_name, verified/private, profile_pic_url).
+        Lê os metadados do cabeçalho do perfil (contadores, full_name,
+        verified/private, profile_pic_url, bio).
+
+        Delegação (F3, sem depender de Selenium):
+          1. engines da cascata com a capacidade 'profile_info'
+             (Selenium via DOM, httpx via web_profile_info, adapters futuros);
+          2. compatibilidade: engine primária sem a capacidade mas com
+             `_driver` → leitor DOM legado;
+          3. nenhuma → RuntimeError explicando capacidades e extras ausentes.
 
         Retorna Profile ligado a este extractor — use
         profile.get_followers() / profile.get_following().
         """
         _validate_profile_id(profile_id)
         try:
-            from instat.profile import Profile, parse_profile_from_meta
+            from instat.profile import Profile
+            from instat.profile_readers import read_profile_from_driver
         except ImportError:
-            from profile import Profile, parse_profile_from_meta
+            from profile import Profile  # type: ignore
 
-        driver = getattr(self._engine, '_driver', None)
-        if driver is None:
-            raise RuntimeError("get_profile requires a Selenium-based engine")
+            from profile_readers import read_profile_from_driver  # type: ignore
 
-        url = f"https://www.instagram.com/{profile_id}/"
-        driver.get(url)
-
-        def _meta(prop: str) -> str:
-            try:
-                el = driver.find_element('css selector', f'meta[property="{prop}"]')
-                return el.get_attribute('content') or ''
-            except Exception:
-                return ''
-
-        og_desc = _meta('og:description')
-        og_title = _meta('og:title')
-        og_image = _meta('og:image')
-
-        # Bio extraction — 3-strategy fallback because IG layout drifts
-        # and a single probe is brittle:
-        #   (1) Structured probe on <header section> looking for a
-        #       multi-line div/span/h1 without anchors. Catches most
-        #       desktop layouts.
-        #   (2) Inline JSON probe: `window.__additionalDataLoaded` /
-        #       SharedData script has `user.biography` directly.
-        #       Most reliable when the structural DOM differs.
-        #   (3) Permissive scan: any span[dir="auto"] not anchor-nested
-        #       and not matching counter shape. Last-ditch but cheap.
-        # All return None silently on miss — graceful degradation.
-        bio: Optional[str] = None
-        try:
-            bio = driver.execute_script(r"""
-                // Strategy 1: header section structural scan
-                const h = document.querySelector('header section');
-                if (h) {
-                    const candidates = h.querySelectorAll('div, span, h1');
-                    for (const el of candidates) {
-                        const t = (el.textContent || '').trim();
-                        if (t.length < 20 || t.length > 1000) continue;
-                        if (el.querySelector('a')) continue;
-                        if (/followers|following|posts|seguidores|seguindo|publicaç/i.test(t)) continue;
-                        return t;
-                    }
-                }
-                // Strategy 2: inline JSON via window.__additionalDataLoaded
-                // / SharedData fallback. IG stores user.biography directly.
-                const scripts = document.querySelectorAll('script');
-                for (const s of scripts) {
-                    const txt = s.textContent || '';
-                    const m = txt.match(/"biography":\s*"((?:[^"\\]|\\.){0,1000})"/);
-                    if (m) {
-                        try {
-                            const raw = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                            if (raw.length >= 1) return raw;
-                        } catch (e) { /* ignore */ }
-                    }
-                }
-                // Strategy 3: permissive spans
-                const spans = document.querySelectorAll('span[dir="auto"]');
-                for (const s of spans) {
-                    const t = (s.textContent || '').trim();
-                    if (t.length < 10 || t.length > 1000) continue;
-                    if (s.closest('a')) continue;
-                    if (/^\d/.test(t) && /followers|following|posts/i.test(t)) continue;
-                    return t;
-                }
-                return null;
-            """)
-            if bio is not None and not isinstance(bio, str):
-                bio = None
-            elif isinstance(bio, str) and not bio.strip():
-                bio = None
-        except Exception:
-            bio = None
-
-        counts = parse_profile_from_meta(og_desc)
-
-        # og:title: "Full Name (@username) • Instagram photos and videos"
-        full_name = None
-        if og_title:
-            m = re.match(r'^(.*?)\s*\(@', og_title)
-            if m:
-                full_name = m.group(1).strip() or None
-
-        is_verified = None
-        try:
-            is_verified = bool(driver.execute_script(
-                "return !!document.querySelector('svg[aria-label=\"Verified\"]');"
-            ))
-        except Exception:
-            pass
-
-        is_private = None
-        try:
-            is_private = bool(driver.execute_script(
-                "return document.body.innerText.toLowerCase().includes"
-                "('this account is private') || "
-                "document.body.innerText.toLowerCase().includes('conta privada');"
-            ))
-        except Exception:
-            pass
+        info = None
+        attempted: List[str] = []
+        last_err: Optional[Exception] = None
+        manager = getattr(self, '_engine_manager', None)
+        if isinstance(manager, EngineManager):
+            info, attempted, last_err = manager.get_profile_info(profile_id)
+        if info is None:
+            engine = getattr(self, '_engine', None)
+            driver = getattr(engine, '_driver', None)
+            declares_capability = isinstance(engine, BaseEngine) and 'profile_info' in engine.capabilities
+            if driver is not None and not declares_capability:
+                info = read_profile_from_driver(driver, profile_id)
+        if info is None:
+            raise RuntimeError(self._explain_no_profile_reader(attempted, last_err))
 
         return Profile(
-            username=profile_id,
-            url=url,
-            full_name=full_name,
-            bio=bio,
-            followers_count=counts.get('followers_count'),
-            following_count=counts.get('following_count'),
-            posts_count=counts.get('posts_count'),
-            is_private=is_private,
-            is_verified=is_verified,
-            profile_pic_url=og_image or None,
+            username=info.username,
+            url=info.url,
+            full_name=info.full_name,
+            bio=info.bio,
+            followers_count=info.followers_count,
+            following_count=info.following_count,
+            posts_count=info.posts_count,
+            is_private=info.is_private,
+            is_verified=info.is_verified,
+            profile_pic_url=info.profile_pic_url,
             _extractor=self,
         )
+
+    def _explain_no_profile_reader(self, attempted: List[str], last_err: Optional[Exception]) -> str:
+        manager = getattr(self, '_engine_manager', None)
+        engines = list(getattr(manager, 'engines', []) or [])
+        parts = [
+            "get_profile requires an engine with the 'profile_info' capability "
+            "(e.g. 'selenium' or 'httpx')."
+        ]
+        if engines:
+            listing = ", ".join(
+                f"{e.name}={sorted(getattr(e, 'capabilities', frozenset()))}" for e in engines
+            )
+            parts.append(f"Configured engines and capabilities: {listing}.")
+        if attempted:
+            parts.append(f"Tried {attempted}; last error: {type(last_err).__name__}: {last_err}.")
+        skipped = getattr(self, '_skipped_engines', {}) or {}
+        for name, hint in skipped.items():
+            parts.append(f"Engine '{name}' was requested but skipped: {hint}.")
+        return " ".join(parts)
 
     def get_followers(self, profile_id: str,
                       max_duration: Optional[float] = None,

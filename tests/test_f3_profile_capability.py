@@ -201,9 +201,13 @@ def test_capability_matrix():
 def test_explicit_capabilities_opt_in_overrides_derivation():
     class Declared(CapableEngine):
         capabilities = frozenset({"extract"})
-    ext = ext_with(Declared("declarada"))
-    with pytest.raises(RuntimeError):
+    declared = Declared("declarada")
+    ext = ext_with(declared)
+    with pytest.raises(RuntimeError) as err:
         ext.get_profile("alvo")
+    # reforçado após o vermelho (passava vacuamente): a declaração explícita manda
+    assert declared.info_calls == 0
+    assert "declarada=['extract']" in str(err.value)
 
 
 # ------------------------------------------------------------ 8. extra não instalado
@@ -213,3 +217,12 @@ def test_message_cites_missing_extra():
     with pytest.raises(RuntimeError) as err:
         ext.get_profile("alvo")
     assert "pip install instat[httpx]" in str(err.value)
+
+
+# ------------------------------------------------------------ desvio encontrado no passo 6 (ruff F821)
+def test_selenium_profile_info_without_driver_is_technical_blocked_error():
+    """Sem driver deve ser BlockedError (técnico → próxima engine), não NameError."""
+    from instat.engines.selenium_engine import SeleniumEngine
+    from instat.exceptions import BlockedError
+    with pytest.raises(BlockedError):
+        SeleniumEngine(headless=True).get_profile_info("alvo")

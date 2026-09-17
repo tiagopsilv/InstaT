@@ -545,6 +545,42 @@ class EngineManager:
                 continue
         return None
 
+    def get_profile_info(self, profile_id: str):
+        """Cascata da capacidade 'profile_info' (F3).
+
+        Só engines que declaram a capacidade são tentadas, na ordem da
+        cascata. Passa pelo governador (F2): parada terminal (challenge,
+        restrição, 429, proxy) interrompe e vira ExtractionStoppedError;
+        NotImplementedError e erro técnico seguem para a próxima engine.
+        Retorna (ProfileInfo | None, [nomes tentados], último erro).
+        """
+        attempted: List[str] = []
+        last_err: Optional[Exception] = None
+        for engine in self.engines:
+            if 'profile_info' not in getattr(engine, 'capabilities', frozenset()):
+                continue
+            attempted.append(engine.name)
+            key = self._governor_key(None, 'profile_info')
+            self.governor.begin(key)
+            try:
+                self._ensure_engine_logged_in(engine)
+                return self.governor.call(key, lambda e=engine: e.get_profile_info(profile_id)), attempted, None
+            except GovernorStop as stop:
+                self.last_stop = stop
+                raise ExtractionStoppedError(
+                    f"get_profile_info stopped on {engine.name} ({stop.reason})", stop=stop,
+                ) from stop
+            except NotImplementedError as e:
+                last_err = e
+                continue
+            except Exception as e:
+                if type(e).__name__ == 'ProfileNotFoundError':
+                    raise
+                logger.warning(f"{engine.name}: get_profile_info failed: {type(e).__name__}: {e}")
+                last_err = e
+                continue
+        return None, attempted, last_err
+
     def get_recent_posts(self, profile_id: str, limit: int = 5) -> list:
         """Cascade get_recent_posts. Engines que raise NotImplementedError
         são puladas silenciosamente — Selenium/Playwright caem nesse

@@ -48,6 +48,33 @@ class BaseEngine(ABC):
             "Include httpx engine in your cascade for post metrics."
         )
 
+    def get_profile_info(self, profile_id: str):
+        """Metadados do cabeçalho do perfil (instat.profile_info.ProfileInfo).
+
+        Default: raise NotImplementedError — mesmo padrão de get_recent_posts.
+        Não é abstrato: subclasses legadas continuam instanciáveis, e o
+        EngineManager/InstaExtractor pulam engines sem a capacidade.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support get_profile_info."
+        )
+
+    @property
+    def capabilities(self) -> frozenset:
+        """Capacidades explícitas da engine.
+
+        Derivadas por padrão: {'extract', 'total_count'} mais 'profile_info' /
+        'recent_posts' quando a subclasse sobrescreve o método. Uma engine pode
+        declarar o conjunto explicitamente (atributo ou property) — opt-in.
+        """
+        caps = {"extract", "total_count"}
+        cls = type(self)
+        if cls.get_profile_info is not BaseEngine.get_profile_info:
+            caps.add("profile_info")
+        if cls.get_recent_posts is not BaseEngine.get_recent_posts:
+            caps.add("recent_posts")
+        return frozenset(caps)
+
     @abstractmethod
     def quit(self) -> None:
         """Libera recursos (fecha browser, sessão, etc.)."""

@@ -81,3 +81,73 @@ Relatório renderizado a partir de execuções reais do código com adapters fak
 | `01-contrato-legado.png` | snippet-contrato com engine fake sem `_driver` e engine legada com `_driver`: mesmos campos |
 | `02-perfil-sem-driver.png` | `get_profile` via httpx fake (resposta simulada) e cascata primária sem capacidade → secundária |
 | `03-capacidades.png` | matriz de capacidades por engine e mensagens de erro explicativas |
+
+## Passo 4 — TDD
+
+- **Vermelho 1** ([`04-tdd-vermelho.log.txt`](04-tdd-vermelho.log.txt), commit `b5569c2`): só **ausência do módulo** `instat.profile_info`, a mesma fraqueza registrada na F5.
+- **Vermelho 2, comportamental** ([`04b-tdd-vermelho-comportamental.log.txt`](04b-tdd-vermelho-comportamental.log.txt), commit `ad36b5c`): foi adicionado **só** o tipo `ProfileInfo`, sem comportamento. Resultado: 12 testes falhando por comportamento (capacidade inexistente, cascata, httpx, Selenium, matriz, mensagem e parte B do contrato).
+- **Teste que passava vacuamente:** `test_explicit_capabilities_opt_in_overrides_derivation` passava no vermelho 2 porque `get_profile` já levantava `RuntimeError` por qualquer motivo. Foi reforçado, exigindo que `get_profile_info` **não** seja chamado e que a mensagem mostre a declaração explícita. Contra o código antigo, a versão reforçada falha ([`05-reforco-explicit-vermelho.log.txt`](05-reforco-explicit-vermelho.log.txt)).
+- **Arquivos:** `tests/test_f3_profile_capability.py` e a parte B de `tests/test_public_api_contract.py`, reescrita com engine sem `_driver` e contador da delegação real. A parte A ficou intacta.
+
+## Passo 5 — Execução
+
+| Arquivo | Mudança |
+|---|---|
+| `instat/profile_info.py` | `ProfileInfo` (dataclass congelada) |
+| `instat/engines/base.py` | `get_profile_info` (não abstrato, default `NotImplementedError`) e `capabilities` derivada, sobrescrevível (opt-in) |
+| `instat/profile_readers.py` | `read_profile_from_driver`: o código de `get_profile`, movido sem alterar a lógica |
+| `instat/engines/selenium_engine.py` | `get_profile_info` via leitor DOM; sem driver → `BlockedError` |
+| `instat/engines/httpx_engine.py` | `get_profile_info` via `web_profile_info` (404 → `ProfileNotFoundError`; status classificados pela F2) |
+| `instat/engines/engine_manager.py` | `get_profile_info`: cascata só entre engines com a capacidade, pelo governador; parada terminal → `ExtractionStoppedError` |
+| `instat/extractor.py` | `get_profile` delega (capacidade → caminho legado `_driver` → `RuntimeError` explicativo); `_build_engines` registra extras pulados |
+| `instat/mobile/engines.py` | stubs declaram `capabilities = frozenset()` |
+
+**Correções durante a execução:**
+1. **`BlockedError` não importado** em `selenium_engine.py` (ruff F821 / mypy). Sem driver, o resultado seria `NameError` em vez de erro técnico. Nenhum teste cobria esse caminho. Foi escrito um teste vermelho antes ([`06-desvio-blockederror-vermelho.log.txt`](06-desvio-blockederror-vermelho.log.txt)) e depois corrigido o import.
+2. **mypy** em `extractor.py`: a expressão da capacidade foi reescrita, sem mudar o comportamento.
+3. **Prints corrigidos após a leitura:**
+   - coluna e cabeçalhos cortados;
+   - rótulo do caminho cortado;
+   - quebra de linha no meio de palavras;
+   - nota sobre `is_private`/`is_verified` (`None` × `False`).
+
+## Passo 6 — Testes
+
+| Verificação | Resultado | Log |
+|---|---|---|
+| Suíte 3.12 (`not e2e/mobile/real`) | 844 passed, 0 failed | [`06-suite-312.log.txt`](06-suite-312.log.txt) |
+| Suíte 3.13 | 844 passed, 0 failed | [`06-suite-313.log.txt`](06-suite-313.log.txt) |
+| Contratos mobile (`tests/mobile`) | 24 passed (saída -q sem resumo: 24 pontos) | [`06-mobile-contratos.log.txt`](06-mobile-contratos.log.txt) |
+| ruff / mypy | limpos | [`06-ruff.log.txt`](06-ruff.log.txt), [`06-mypy.log.txt`](06-mypy.log.txt) |
+
+**Aceite:**
+
+| # | Critério | Status | Evidência |
+|---|---|---|---|
+| 1 | Parte B com engine **sem `_driver`** atravessando a delegação real | ✅ | `test_contract_snippet_runs_end_to_end_with_fake_engine` (`not hasattr`, contador `['target']`); print 01 |
+| 2 | Subclasse legada instanciável; mensagem cita engine e capacidade | ✅ | 2 testes; print 03 |
+| 3 | Caminho legado com `_driver` inalterado | ✅ | `tests/test_profile.py` sem mudança; print 01 |
+| 4 | Cascata para a capaz; challenge para a cascata | ✅ | 3 testes; print 02 |
+| 5 | Httpx: `web_profile_info` → todos os campos; 404 | ✅ | 2 testes com resposta **simulada**; print 02 |
+| 6 | Selenium dá o mesmo resultado que o legado | ✅ | teste + leitor compartilhado |
+| 7 | Matriz de capacidades | ✅ | `test_capability_matrix`; print 03 |
+| 8 | Mensagem cita `pip install instat[httpx]` | ✅ | teste; print 03 |
+| 9 | 3.12, 3.13, ruff e mypy | ✅ | tabela acima |
+
+"**A nova capacidade funciona sem Selenium, sem que o teste vire mock da própria API pública**": os testes chamam `InstaExtractor.get_profile` real, com `EngineManager` e governador reais. Só a engine é fake (adapter), e o contador prova que a chamada atravessou a delegação.
+
+**Não testado:**
+- formato real de `web_profile_info` (resposta simulada, sem tráfego);
+- Selenium real e Instagram;
+- leitura de perfil por Android UI (F7) e API móvel (F8);
+- E2E com Firefox não reexecutado.
+
+**Fora do escopo, mantido:** handoff de cookies do Selenium (M5) e atributo público `extractor.driver`.
+
+## Passo 7 — Prints (lidos)
+
+| Print | Leitura |
+|---|---|
+| [`01-contrato-legado.png`](01-contrato-legado.png) | engine sem `_driver` e legado com `_driver`: mesmos user, full_name, 1894/1892/123 e pic; `privado`/`verificado` None × False (nota explica); `hasattr = False`; delegação `['target']`; followers 3 e following 2 |
+| [`02-perfil-sem-driver.png`](02-perfil-sem-driver.png) | httpx com resposta simulada: Alvo da Silva, 1894/1892/123, `False`/`True`, pic HD; bio `'bio\nlinha 2'`; requisição a `web_profile_info`; cascata legada → capaz (Nome Capaz 42/7/3, 1 chamada); challenge → `ExtractionStoppedError reason=challenge`, 0 chamadas à 2ª |
+| [`03-capacidades.png`](03-capacidades.png) | selenium: extract/profile_info/total_count; playwright-chromium: extract/total_count; httpx: + recent_posts; android_ui e mobile_api: vazio; subclasse legada: extract/total_count; mensagens completas, sem cortes, citando capacidades e `pip install instat[httpx]` |

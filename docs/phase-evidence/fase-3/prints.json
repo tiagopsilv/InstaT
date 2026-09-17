@@ -1,0 +1,119 @@
+{
+  "contrato": {
+    "sem_driver": {
+      "tem__driver": false,
+      "chamadas_get_profile_info": [
+        "target"
+      ],
+      "perfil": [
+        "target",
+        "Target Name",
+        1894,
+        1892,
+        123,
+        null,
+        null,
+        "https://example.test/pic.jpg"
+      ],
+      "followers": [
+        "carol",
+        "bob",
+        "alice"
+      ],
+      "following": [
+        "erin",
+        "dave"
+      ]
+    },
+    "legado_com_driver": [
+      "target",
+      "Target Name",
+      1894,
+      1892,
+      123,
+      false,
+      false,
+      "https://example.test/pic.jpg"
+    ]
+  },
+  "sem_driver": {
+    "httpx_web_profile_info": {
+      "perfil": [
+        "alvo",
+        "Alvo da Silva",
+        1894,
+        1892,
+        123,
+        false,
+        true,
+        "https://cdn.example/hd.jpg"
+      ],
+      "bio": "bio\nlinha 2",
+      "url_requisitada": "call('https://i.instagram.com/api/v1/users/web_profile_info/', params={'username': 'alvo'})"
+    },
+    "cascata": {
+      "perfil": [
+        "alvo",
+        "Nome Capaz",
+        42,
+        7,
+        3,
+        false,
+        true,
+        null
+      ],
+      "chamadas_secundaria": 1
+    },
+    "challenge": {
+      "resultado": "ExtractionStoppedError reason=challenge",
+      "chamadas_c2": 0
+    }
+  },
+  "capacidades": {
+    "matriz": [
+      [
+        "selenium",
+        [
+          "extract",
+          "profile_info",
+          "total_count"
+        ]
+      ],
+      [
+        "playwright-chromium",
+        [
+          "extract",
+          "total_count"
+        ]
+      ],
+      [
+        "httpx",
+        [
+          "extract",
+          "profile_info",
+          "recent_posts",
+          "total_count"
+        ]
+      ],
+      [
+        "android_ui",
+        []
+      ],
+      [
+        "mobile_api",
+        []
+      ],
+      [
+        "subclasse-legada",
+        [
+          "extract",
+          "total_count"
+        ]
+      ]
+    ],
+    "mensagens": {
+      "só engine legada": "get_profile requires an engine with the 'profile_info' capability (e.g. 'selenium' or 'httpx'). Configured engines and capabilities: minha-engine=['extract', 'total_count'].",
+      "httpx sem extra": "get_profile requires an engine with the 'profile_info' capability (e.g. 'selenium' or 'httpx'). Configured engines and capabilities: primaria=['extract', 'total_count']. Engine 'httpx' was requested but skipped: extra not installed — pip install instat[httpx]."
+    }
+  }
+}
