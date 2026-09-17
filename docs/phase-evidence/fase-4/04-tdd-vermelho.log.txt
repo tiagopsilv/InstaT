@@ -1,0 +1,13 @@
+﻿
+=================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_f4_scheduler.py _________________
+ImportError while importing test module 'C:\Projetos\InstaT-wt-f4\tests\test_f4_scheduler.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\tiago\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_f4_scheduler.py:10: in <module>
+    from instat.scheduler import AccountScheduler, NoEligibleAccount
+E   ModuleNotFoundError: No module named 'instat.scheduler'
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!

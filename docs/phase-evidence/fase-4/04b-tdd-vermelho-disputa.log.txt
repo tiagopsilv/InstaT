@@ -1,0 +1,37 @@
+﻿FFFF                                                                     [100%]
+================================== FAILURES ===================================
+E   AssertionError: ['Traceback (most recent call last):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has...ast):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has no attribute \'last_lease\'
+      ']
+    assert not ['Traceback (most recent call last):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has...ast):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has no attribute \'last_lease\'\n']
+C:\Projetos\InstaT-wt-f4\tests\test_f4_dispute.py:124: AssertionError: ['Traceback (most recent call last):
+E   AssertionError: ['Traceback (most recent call last):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has...ast):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has no attribute \'last_lease\'
+      ']
+    assert not ['Traceback (most recent call last):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has...ast):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has no attribute \'last_lease\'\n']
+C:\Projetos\InstaT-wt-f4\tests\test_f4_dispute.py:124: AssertionError: ['Traceback (most recent call last):
+E   AssertionError: ['Traceback (most recent call last):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has...ast):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has no attribute \'last_lease\'
+      ']
+    assert not ['Traceback (most recent call last):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has...ast):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has no attribute \'last_lease\'\n']
+C:\Projetos\InstaT-wt-f4\tests\test_f4_dispute.py:124: AssertionError: ['Traceback (most recent call last):
+E   AssertionError: ['Traceback (most recent call last):
+        File "<string>", line 29, in <module>
+      AttributeError: \'JobStore\' object has no attribute \'last_lease\'
+      ']
+    assert not ['Traceback (most recent call last):\n  File "<string>", line 29, in <module>\nAttributeError: \'JobStore\' object has no attribute \'last_lease\'\n']
+C:\Projetos\InstaT-wt-f4\tests\test_f4_dispute.py:140: AssertionError: ['Traceback (most recent call last):
+=========================== short test summary info ===========================
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[2-167]
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[3-111]
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[4-84]
+FAILED tests/test_f4_dispute.py::test_killed_process_lease_recovered_after_ttl_and_restriction_kept
