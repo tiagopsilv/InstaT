@@ -1,0 +1,4 @@
+C:\Projetos\InstaT-wt-f2\tests\test_f2_governor.py:561: AssertionError: assert <KeyState.ACTIVE: 'active'> is <KeyState.PAUSED: 'paused'>
+=========================== short test summary info ===========================
+FAILED tests/test_f2_governor.py::test_retry_after_above_cap_pauses_key_until_retry_after
+1 failed, 79 deselected in 0.21s

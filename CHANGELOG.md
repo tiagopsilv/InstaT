@@ -24,6 +24,23 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
 - **User-Agent incoerente (F1):** o Firefox (Selenium e Playwright) declarava Chrome 89/Android 8. Agora cada motor usa um UA da própria família (Chrome, Firefox, Safari/iOS).
 - **Testes de login sem rede (F1):** `tests/test_login.py` consultava o webdriver-manager (API do GitHub) e falhava por rate limit no CI. O marcador `real` foi registrado, é opt-in por `INSTAT_REAL_TESTS=1` e fica excluído do CI.
 
+### Changed — política de erros (F2)
+- **Governador de erros e orçamento** (`instat/governor.py`, roadmap §5.6). Toda tentativa de login ou extração do `EngineManager` passa por ele.
+  - **Mudança de comportamento:**
+    - 429, challenge/checkpoint, restrição (`feedback_required`/403) e erros do proxy **interrompem a cascata**: nenhuma outra conta do `SessionPool` nem outro engine é tentado com a mesma conta.
+    - `until_complete` não repete e a rotação de contas de fallback não acontece após essas paradas.
+    - Antes, o código trocava de conta e de engine e esperava com `time.sleep` real (medido: 270 s de espera em 4 tentativas contra um challenge).
+  - **Tentativas:** falhas transitórias (timeout, conexão, 5xx) repetem no mesmo engine até 3 vezes, com backoff limitado e `Retry-After` (segundos ou HTTP-date). Erros técnicos continuam caindo para o próximo engine.
+  - **Estados e orçamento:**
+    - estados por (conta, operação): `paused`, que expira; `needs_attention` e `restricted`, que só saem com liberação manual e sessão validada;
+    - orçamento de tentativas, bytes (httpx) e duração, com as esperas incluídas.
+  - **Motivo da parada:** `EngineManager.last_stop` e `metrics_sink['terminal_reason']`. Sem nenhum perfil coletado, levanta `ExtractionStoppedError`, subclasse de `AllEnginesBlockedError`.
+  - Os limites são operacionais, não limites seguros do Instagram.
+- **`HttpxEngine`:**
+  - distingue proxy (`ProxyError` com as causas documentadas do DataImpulse), serviço (`TransientError`), challenge (`ChallengeError`) e restrição (`RestrictedError`), todas subclasses de `BlockedError`;
+  - `RateLimitError` ganhou `retry_after`.
+- **`Utils.wait_for_new_profiles`:** o laço em `StaleElementReferenceException` passou a ter teto (5).
+
 ### Added
 - **Post metrics** — `extractor.get_recent_posts(profile_id, limit=N)` returns `List[PostMetrics]` (shortcode, likes_count, comments_count, timestamp, caption, hashtags, media_type, media_url) via `HttpxEngine` paginating the private `/feed/user/{user_id}/` endpoint. Feeds engagement formulas (TEP) without the consumer scraping post pages itself. Other engines raise `NotImplementedError` so the cascade falls through.
 - **Rich follower metadata** — `get_followers(..., with_metadata=True)` and `get_following(..., with_metadata=True)` return `List[ProfileSummary]` instead of `List[str]`. Populates `user_id` (numeric `pk`), `full_name`, `is_verified`, `is_private`, `is_business`, `profile_pic_url` from the IG private API. Selenium/Playwright degrade gracefully to username-only summaries.

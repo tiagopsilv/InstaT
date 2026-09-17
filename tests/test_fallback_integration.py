@@ -95,8 +95,13 @@ class TestFallbackIntegration(unittest.TestCase):
         result = mgr.extract('target', 'followers')
         self.assertEqual(set(result), {'a', 'b'})
 
-    def test_session1_blocked_session2_succeeds(self):
-        """Session 1 raises RateLimitError → Session 2 succeeds."""
+    def test_session1_rate_limited_does_not_switch_to_session2(self):
+        """Session 1 raises RateLimitError → the cascade stops; session 2 is NOT used.
+
+        F2 (roadmap §5.6): "429 → pausar o escopo afetado; não multiplicar
+        tentativas por outros slots". This test used to assert the old
+        policy (session 2 takes over after a 429).
+        """
         mock_engine = MockEngine('selenium', profiles={'x', 'y'})
         call_count = {'n': 0}
         orig_extract = mock_engine.extract
@@ -113,12 +118,10 @@ class TestFallbackIntegration(unittest.TestCase):
             {'username': 'acc2', 'password': 'p2'},
         ])
         mgr = EngineManager([mock_engine], session_pool=sp)
-        result = mgr.extract('target', 'followers')
-        self.assertEqual(set(result), {'x', 'y'})
-        # Login was called twice (once per session)
-        self.assertEqual(len(mock_engine.login_calls), 2)
-        self.assertEqual(mock_engine.login_calls[0]['username'], 'acc1')
-        self.assertEqual(mock_engine.login_calls[1]['username'], 'acc2')
+        with self.assertRaises(AllEnginesBlockedError):
+            mgr.extract('target', 'followers')
+        self.assertEqual([c['username'] for c in mock_engine.login_calls], ['acc1'])
+        self.assertEqual(mgr.last_stop.reason, 'rate_limited')
 
     def test_checkpoint_resume_after_crash(self):
         """Existing checkpoint profiles are passed to extract as existing_profiles."""

@@ -10,14 +10,28 @@ try:
     from instat.backoff import SmartBackoff
     from instat.checkpoint import ExtractionCheckpoint
     from instat.engines.base import BaseEngine
-    from instat.exceptions import AccountBlockedError, AllEnginesBlockedError, BlockedError, RateLimitError
+    from instat.exceptions import (
+        AccountBlockedError,
+        AllEnginesBlockedError,
+        BlockedError,
+        ExtractionStoppedError,
+        RateLimitError,
+    )
+    from instat.governor import Governor, GovernorStop, Signal
     from instat.proxy import ProxyPool
     from instat.session_pool import SessionPool
 except ImportError:
     from backoff import SmartBackoff
     from checkpoint import ExtractionCheckpoint
     from engines.base import BaseEngine
-    from exceptions import AccountBlockedError, AllEnginesBlockedError, BlockedError, RateLimitError
+    from exceptions import (  # type: ignore
+        AccountBlockedError,
+        AllEnginesBlockedError,
+        BlockedError,
+        ExtractionStoppedError,
+        RateLimitError,
+    )
+    from governor import Governor, GovernorStop, Signal  # type: ignore
     from proxy import ProxyPool
     from session_pool import SessionPool
 
@@ -26,16 +40,20 @@ class EngineManager:
     """
     Orquestrador de engines com fallbacks em cascata.
     - Checkpoint integrado no nível orquestrador (atravessa engines/sessions)
-    - Iteração de sessions com re-login em RateLimit/AccountBlocked
-    - Backoff exponencial entre falhas
-    - Retorna progresso parcial sempre que houver — levanta AllEnginesBlockedError
-      apenas quando nada foi coletado.
+    - Toda tentativa passa pelo Governor (roadmap §5.6): transitório repete
+      com teto; erro técnico cai para o próximo engine com a mesma conta;
+      429, proxy, challenge, restrição, orçamento e cancelamento PARAM a
+      cascata inteira — nunca trocam de conta para insistir.
+    - Retorna progresso parcial sempre que houver — levanta
+      ExtractionStoppedError/AllEnginesBlockedError apenas quando nada foi
+      coletado. `last_stop` guarda o motivo terminal.
     """
 
     def __init__(self, engines: List[BaseEngine],
                  proxy_pool: Optional[ProxyPool] = None,
                  session_pool: Optional[SessionPool] = None,
-                 default_credentials: Optional[tuple] = None):
+                 default_credentials: Optional[tuple] = None,
+                 governor: Optional[Governor] = None):
         """
         default_credentials: (username, password) usado para login sob demanda
         em engines secundárias quando não há session_pool. Permite cascata
@@ -48,6 +66,8 @@ class EngineManager:
         self._session_pool = session_pool
         self._default_credentials = default_credentials
         self._logged_in_engines: set[int] = set()  # track which engines already logged in
+        self.governor = governor or Governor()
+        self.last_stop: Optional[GovernorStop] = None
 
         pool_info_parts = []
         if proxy_pool:
@@ -88,8 +108,12 @@ class EngineManager:
 
         backoff = SmartBackoff()
         excluded = set(exclude_engines or ())
+        self.last_stop = None
+        begun: set = set()
 
         for engine in self.engines:
+            if self.last_stop is not None:
+                break
             if engine.name in excluded:
                 logger.info(
                     f"EngineManager: skipping {engine.name} "
@@ -98,15 +122,25 @@ class EngineManager:
                 continue
             sessions = self._get_sessions_iter()
             for session in sessions:
-                result = self._try_engine_session(
-                    engine, session, profile_id, list_type,
-                    profiles, checkpoint, backoff,
-                    max_duration=max_duration,
-                    rate_limit_sink=rate_limit_sink,
-                    should_stop=should_stop,
-                    with_metadata=with_metadata,
-                    **kwargs
-                )
+                key = self._governor_key(session, list_type)
+                if key not in begun:
+                    self.governor.begin(key)
+                    begun.add(key)
+                try:
+                    result = self._try_engine_session(
+                        engine, session, profile_id, list_type,
+                        profiles, checkpoint, backoff,
+                        max_duration=max_duration,
+                        rate_limit_sink=rate_limit_sink,
+                        should_stop=should_stop,
+                        with_metadata=with_metadata,
+                        _governor_key=key,
+                        **kwargs
+                    )
+                except GovernorStop as stop:
+                    self._on_stop(stop, engine, session, profiles, checkpoint,
+                                  rate_limit_sink, metrics_sink)
+                    break
                 if result is not None:
                     checkpoint.clear()
                     backoff.reset()
@@ -137,9 +171,48 @@ class EngineManager:
                 return [ProfileSummary.from_username(u) for u in profiles]
             return list(profiles)
 
+        if self.last_stop is not None:
+            raise ExtractionStoppedError(
+                f"Extraction stopped for {profile_id}/{list_type} "
+                f"({self.last_stop.reason}) with zero profiles collected",
+                stop=self.last_stop,
+            )
         raise AllEnginesBlockedError(
             f"All engines blocked for {profile_id}/{list_type} with zero profiles collected"
         )
+
+    def _governor_key(self, session, list_type: str):
+        if session is not None:
+            account = session.username
+        elif self._default_credentials is not None:
+            account = self._default_credentials[0]
+        else:
+            account = 'default'
+        return (account, f'extract:{list_type}')
+
+    def _on_stop(self, stop: GovernorStop, engine, session, profiles, checkpoint,
+                 rate_limit_sink, metrics_sink) -> None:
+        """Parada terminal: registra motivo e preserva parcial, sem outra conta."""
+        logger.warning(
+            f"EngineManager: governor stopped on {engine.name} "
+            f"({stop.reason}) — no account switch, no further engines"
+        )
+        self.last_stop = stop
+        try:
+            checkpoint.save(profiles)
+        except Exception as e:
+            logger.debug(f"checkpoint.save failed on stop: {e}")
+        if stop.signal is Signal.RATE_LIMITED and rate_limit_sink is not None:
+            rate_limit_sink.append(engine.name)
+        if session is not None and self._session_pool is not None:
+            if stop.signal is Signal.RATE_LIMITED:
+                self._session_pool.mark_blocked(session, SessionPool.DEFAULT_COOLDOWN)
+            elif stop.signal in (Signal.CHALLENGE, Signal.RESTRICTED):
+                self._session_pool.mark_blocked(
+                    session, SessionPool.META_INTERSTITIAL_COOLDOWN
+                )
+        if metrics_sink is not None:
+            metrics_sink['terminal_reason'] = stop.reason
 
     def _try_cookie_handoff(self, target_engine) -> bool:
         """Inject cookies from an already-logged-in Selenium engine into
@@ -252,24 +325,26 @@ class EngineManager:
                             rate_limit_sink: Optional[List[str]] = None,
                             should_stop: Optional[Callable[[], bool]] = None,
                             with_metadata: bool = False,
+                            _governor_key=None,
                             **kwargs):
         """
-        Tenta 1 (engine, session) pair. Retorna profiles (set) em sucesso, None em falha.
-        Atualiza `profiles` in-place em sucesso.
+        Tenta 1 (engine, session) pair. Retorna profiles (set) em sucesso,
+        None em falha técnica (próximo engine). Levanta GovernorStop em
+        parada terminal. Atualiza `profiles` in-place em sucesso.
         """
+        key = _governor_key or self._governor_key(session, list_type)
+        gov = self.governor
         # Re-login se session fornecida
         if session is not None:
             try:
                 logger.info(f"{engine.name}: logging in as {session.username}")
-                engine.login(session.username, session.password,
-                             proxy=session.proxy)
+                gov.call(key, lambda: engine.login(session.username, session.password,
+                                                   proxy=session.proxy),
+                         should_stop)
+            except GovernorStop:
+                raise
             except (AccountBlockedError, BlockedError) as e:
-                logger.warning(f"{engine.name}: login blocked for {session.username}: {e}")
-                if self._session_pool is not None:
-                    self._session_pool.mark_blocked(
-                        session, self._cooldown_for_error(e)
-                    )
-                backoff.wait()
+                logger.warning(f"{engine.name}: login failed (technical) for {session.username}: {e}")
                 return None
             except Exception as e:
                 logger.exception(f"{engine.name}: login failed unexpectedly: {e}")
@@ -290,8 +365,10 @@ class EngineManager:
             else:
                 try:
                     logger.info(f"{engine.name}: on-demand login (cascata)")
-                    engine.login(username, password)
+                    gov.call(key, lambda: engine.login(username, password), should_stop)
                     self._logged_in_engines.add(id(engine))
+                except GovernorStop:
+                    raise
                 except (AccountBlockedError, BlockedError) as e:
                     logger.warning(f"{engine.name}: on-demand login blocked: {e}")
                     return None
@@ -340,7 +417,15 @@ class EngineManager:
                 extract_kwargs['should_stop'] = should_stop
             if with_metadata:
                 extract_kwargs['with_metadata'] = True
-            new = engine.extract(profile_id, list_type, **extract_kwargs)
+            if hasattr(engine, 'bytes_sink'):
+                engine.bytes_sink = lambda n, _key=key: gov.record_bytes(_key, n)
+            if hasattr(engine, 'budget_check'):
+                # Checado antes de cada página: a página já paga é processada.
+                engine.budget_check = lambda _key=key: gov.check_budget(_key)
+            new = gov.call(
+                key, lambda: engine.extract(profile_id, list_type, **extract_kwargs),
+                should_stop,
+            )
             # with_metadata: a engine retorna List[ProfileSummary].
             # NÃO mergeamos no `profiles: Set[str]` (tipo incompatível);
             # cross-engine partial preservation só vale pro modo
@@ -350,24 +435,12 @@ class EngineManager:
             if new is not None:
                 profiles |= set(new)
             return profiles
-        except RateLimitError as e:
-            logger.warning(f"{engine.name}: rate limited: {e}")
+        except GovernorStop:
+            raise
+        except (RateLimitError, AccountBlockedError) as e:
+            # Só chega aqui se uma política customizada pedir fallback.
+            logger.warning(f"{engine.name}: {type(e).__name__} treated as fallback: {e}")
             checkpoint.save(profiles)
-            if session is not None and self._session_pool is not None:
-                self._session_pool.mark_blocked(session, SessionPool.DEFAULT_COOLDOWN)
-            if rate_limit_sink is not None:
-                rate_limit_sink.append(engine.name)
-            backoff.wait()
-            return None
-        except AccountBlockedError as e:
-            reason = getattr(e, 'reason', 'account blocked')
-            logger.warning(f"{engine.name}: account blocked: {reason}")
-            checkpoint.save(profiles)
-            if session is not None and self._session_pool is not None:
-                self._session_pool.mark_blocked(
-                    session, SessionPool.META_INTERSTITIAL_COOLDOWN
-                )
-            backoff.wait()
             return None
         except BlockedError as e:
             logger.warning(f"{engine.name} blocked: {e}")

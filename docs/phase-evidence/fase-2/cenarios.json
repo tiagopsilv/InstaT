@@ -1,0 +1,424 @@
+{
+  "timeline": {
+    "cenario": "503 com Retry-After → 200 → 429",
+    "resultado": "2 perfil(is) (parcial)",
+    "motivo_terminal": "rate_limited",
+    "logins": [
+      "conta_teste_fake"
+    ],
+    "requisicoes": [
+      [
+        "/friendships/1/followers/",
+        503
+      ],
+      [
+        "/friendships/1/followers/",
+        200
+      ],
+      [
+        "/friendships/1/followers/",
+        429
+      ]
+    ],
+    "engines_tentados": 1,
+    "uso": {
+      "attempts": 3,
+      "bytes": 99,
+      "elapsed_s": 2.0,
+      "state": "paused"
+    },
+    "politica": {
+      "max_transient_retries": 3,
+      "backoff_base_s": 1.0,
+      "backoff_cap_s": 60,
+      "jitter": 0.2,
+      "rate_limit_pause_s": 900,
+      "max_attempts": 50,
+      "max_bytes": null,
+      "max_duration_s": null,
+      "sleep_slice_s": 1.0
+    },
+    "timeline": [
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "begin",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 1
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "success",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 2
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "error",
+        "state": "active",
+        "signal": "transient",
+        "cause": "503",
+        "action": "retry",
+        "delay_s": 2.0,
+        "reason": null,
+        "error": "TransientError"
+      },
+      {
+        "t": 2.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 3
+      },
+      {
+        "t": 2.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "error",
+        "state": "paused",
+        "signal": "rate_limited",
+        "cause": null,
+        "action": "stop",
+        "delay_s": 0.0,
+        "reason": "rate_limited",
+        "error": "RateLimitError"
+      },
+      {
+        "t": 2.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "stop",
+        "state": "paused",
+        "reason": "rate_limited",
+        "signal": "rate_limited"
+      }
+    ]
+  },
+  "orcamento": {
+    "cenario": "teto de bytes",
+    "resultado": "60 perfil(is) (parcial)",
+    "motivo_terminal": "budget:bytes",
+    "logins": [
+      "conta_teste_fake"
+    ],
+    "requisicoes": [
+      [
+        "/friendships/1/followers/",
+        200
+      ],
+      [
+        "/friendships/1/followers/",
+        200
+      ],
+      [
+        "/friendships/1/followers/",
+        200
+      ]
+    ],
+    "engines_tentados": 1,
+    "uso": {
+      "attempts": 2,
+      "bytes": 1596,
+      "elapsed_s": 0.0,
+      "state": "active"
+    },
+    "politica": {
+      "max_transient_retries": 3,
+      "backoff_base_s": 1.0,
+      "backoff_cap_s": 60.0,
+      "jitter": 0.2,
+      "rate_limit_pause_s": 900.0,
+      "max_attempts": 50,
+      "max_bytes": 1500,
+      "max_duration_s": null,
+      "sleep_slice_s": 1.0
+    },
+    "timeline": [
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "begin",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 1
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "success",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 2
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_teste_fake",
+          "extract:followers"
+        ],
+        "event": "stop",
+        "state": "active",
+        "reason": "budget:bytes",
+        "signal": null
+      }
+    ]
+  },
+  "challenge": {
+    "cenario": "challenge com pool de 2 contas e 2 engines",
+    "resultado": "1 perfil(is) (parcial)",
+    "motivo_terminal": "challenge",
+    "logins": [
+      "conta_a_fake"
+    ],
+    "requisicoes": [
+      [
+        "/friendships/1/followers/",
+        200
+      ],
+      [
+        "/friendships/1/followers/",
+        400
+      ]
+    ],
+    "engines_tentados": 2,
+    "uso": {
+      "attempts": 2,
+      "bytes": 102,
+      "elapsed_s": 0.0,
+      "state": "needs_attention"
+    },
+    "politica": {
+      "max_transient_retries": 3,
+      "backoff_base_s": 1.0,
+      "backoff_cap_s": 60.0,
+      "jitter": 0.2,
+      "rate_limit_pause_s": 900.0,
+      "max_attempts": 50,
+      "max_bytes": null,
+      "max_duration_s": null,
+      "sleep_slice_s": 1.0
+    },
+    "timeline": [
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "begin",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 1
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "success",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 2
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "error",
+        "state": "needs_attention",
+        "signal": "challenge",
+        "cause": null,
+        "action": "stop",
+        "delay_s": 0.0,
+        "reason": "challenge",
+        "error": "ChallengeError"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "stop",
+        "state": "needs_attention",
+        "reason": "challenge",
+        "signal": "challenge"
+      }
+    ]
+  },
+  "proxy": {
+    "cenario": "proxy 407 TRAFFIC_EXHAUSTED com pool de 2 contas",
+    "resultado": "ExtractionStoppedError: 0 perfil",
+    "motivo_terminal": "proxy:TRAFFIC_EXHAUSTED",
+    "logins": [
+      "conta_a_fake"
+    ],
+    "requisicoes": [
+      [
+        "/friendships/1/followers/",
+        407
+      ]
+    ],
+    "engines_tentados": 2,
+    "uso": {
+      "attempts": 2,
+      "bytes": 17,
+      "elapsed_s": 0.0,
+      "state": "active"
+    },
+    "politica": {
+      "max_transient_retries": 3,
+      "backoff_base_s": 1.0,
+      "backoff_cap_s": 60.0,
+      "jitter": 0.2,
+      "rate_limit_pause_s": 900.0,
+      "max_attempts": 50,
+      "max_bytes": null,
+      "max_duration_s": null,
+      "sleep_slice_s": 1.0
+    },
+    "timeline": [
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "begin",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 1
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "success",
+        "state": "active"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "attempt",
+        "state": "active",
+        "n": 2
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "error",
+        "state": "active",
+        "signal": "proxy",
+        "cause": "TRAFFIC_EXHAUSTED",
+        "action": "stop",
+        "delay_s": 0.0,
+        "reason": "proxy:TRAFFIC_EXHAUSTED",
+        "error": "ProxyError"
+      },
+      {
+        "t": 0.0,
+        "key": [
+          "conta_a_fake",
+          "extract:followers"
+        ],
+        "event": "stop",
+        "state": "active",
+        "reason": "proxy:TRAFFIC_EXHAUSTED",
+        "signal": "proxy"
+      }
+    ]
+  }
+}

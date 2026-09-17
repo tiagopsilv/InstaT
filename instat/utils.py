@@ -18,6 +18,10 @@ try:
 except ImportError:
     from constants import ELEMENT_RETRY_DELAY, LOADING_SPINNER_WAIT, human_delay
 
+# Teto de repetições por StaleElementReferenceException em wait_for_new_profiles
+# (antes o laço repetia sem limite).
+MAX_STALE_RETRIES = 5
+
 class Utils:
     selectors = SelectorLoader()
 
@@ -168,6 +172,7 @@ class Utils:
         """
         logger.debug("Starting wait loop for new profiles based on actual content change.")
 
+        stale_retries = 0
         while True:
             try:
 
@@ -214,6 +219,12 @@ class Utils:
                     break
 
             except StaleElementReferenceException:
+                stale_retries += 1
+                if stale_retries >= MAX_STALE_RETRIES:
+                    logger.warning(
+                        f"StaleElementReferenceException {stale_retries}x in a row — giving up this wait."
+                    )
+                    break
                 logger.warning("StaleElementReferenceException encountered during profile extraction. Retrying...")
 
         logger.debug(f"No profiles found during loop. Performing final scrolling ({additional_scroll_attempts} attempts).")
