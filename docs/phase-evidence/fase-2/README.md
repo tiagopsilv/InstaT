@@ -201,3 +201,7 @@ Aceite:
 | [`01-timeline.png`](01-timeline.png) | eventos por tempo do relógio falso | login t=0 → página 503 (`transient`, retry, delay 2,0) → t=2,0 página 200 → 429 (`rate_limited`, `stop`) → estado `paused`. Requisições [503, 200, 429]; 2 perfis parciais |
 | [`02-orcamento.png`](02-orcamento.png) | uso × teto por chave | bytes 1596 > 1500 → `budget:bytes`; 3 páginas pedidas, 4ª não; 60 perfis mantidos; tentativas 2 (login + extração) |
 | [`03-alerta.png`](03-alerta.png) | challenge e proxy com pool de 2 contas e 2 engines | challenge: requisições [200, 400], login só `conta_a_fake`, `needs_attention`, 1 perfil parcial. Proxy: [407], `proxy:TRAFFIC_EXHAUSTED`, chave continua `active` (não é marca da conta), `ExtractionStoppedError` com 0 perfil |
+
+## Aceite de CI
+
+Run `35166815188` no PR #8 (somente CI, fechado sem merge): lint-and-type ✅, test 3.12 ✅, test 3.13 ✅, build ✅.
