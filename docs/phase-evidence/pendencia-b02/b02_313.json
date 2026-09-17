@@ -1,0 +1,725 @@
+{
+  "python": "3.13.15",
+  "sqlite": "3.53.1",
+  "cpus": 24,
+  "base": {
+    "summary": {
+      "condicao": "base",
+      "repeticoes": 15,
+      "pior_max": 0.041,
+      "pior_p50": 0.025,
+      "execucoes_com_pior_>=0.5s": 0,
+      "execucoes_com_pior_>=0.1s": 0,
+      "pior_coincide_com_checkpoint": 0,
+      "checkpoints_feitos_pelo_heartbeat": 0,
+      "falhas_heartbeat": 0
+    },
+    "runs": [
+      {
+        "n": 42,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005720000044675544,
+        "worst": 0.03176739998161793,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 42,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.000603599997702986,
+        "worst": 0.02862890000687912,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005895999784115702,
+        "worst": 0.024192000011680648,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 46,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005697500018868595,
+        "worst": 0.024723300011828542,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006446000188589096,
+        "worst": 0.020889500010525808,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005997999978717417,
+        "worst": 0.02557259998866357,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 42,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.000625100001343526,
+        "worst": 0.040577199979452416,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006120000034570694,
+        "worst": 0.031095500016817823,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 44,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005872999900020659,
+        "worst": 0.01909200000227429,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 46,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005655499844579026,
+        "worst": 0.014378099993336946,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 46,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006312499899649993,
+        "worst": 0.014409900002647191,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 44,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005740500200772658,
+        "worst": 0.024724700022488832,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005701999762095511,
+        "worst": 0.025759999989531934,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 46,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006110499962233007,
+        "worst": 0.013083099998766556,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0005994999955873936,
+        "worst": 0.014267100021243095,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      }
+    ]
+  },
+  "cpu_saturada": {
+    "summary": {
+      "condicao": "cpu_saturada",
+      "repeticoes": 15,
+      "pior_max": 0.172,
+      "pior_p50": 0.044,
+      "execucoes_com_pior_>=0.5s": 0,
+      "execucoes_com_pior_>=0.1s": 1,
+      "pior_coincide_com_checkpoint": 0,
+      "checkpoints_feitos_pelo_heartbeat": 0,
+      "falhas_heartbeat": 0
+    },
+    "runs": [
+      {
+        "n": 33,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0016635000065434724,
+        "worst": 0.07200499999453314,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 32,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.004741749988170341,
+        "worst": 0.05247199998120777,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 32,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0035165000008419156,
+        "worst": 0.044081300002289936,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 35,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0011533000215422362,
+        "worst": 0.03448699999717064,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 35,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.003949700010707602,
+        "worst": 0.03347290001693182,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 25,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.005528399982722476,
+        "worst": 0.17236529997899197,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 1
+      },
+      {
+        "n": 29,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.005607099999906495,
+        "worst": 0.04374899997492321,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 32,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.00395359999674838,
+        "worst": 0.07092389999888837,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 36,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0018774999916786328,
+        "worst": 0.03962559998035431,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 33,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.008373099990421906,
+        "worst": 0.035823000012896955,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 31,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.00656350000645034,
+        "worst": 0.06985400000121444,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 34,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.005123849987285212,
+        "worst": 0.040642700012540445,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 33,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0027639000036288053,
+        "worst": 0.04354439998860471,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 37,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.000746600009733811,
+        "worst": 0.04341870002099313,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 35,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.005025499995099381,
+        "worst": 0.046032600017497316,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      }
+    ]
+  },
+  "hb_sem_autocheckpoint": {
+    "summary": {
+      "condicao": "hb_sem_autocheckpoint",
+      "repeticoes": 15,
+      "pior_max": 0.078,
+      "pior_p50": 0.031,
+      "execucoes_com_pior_>=0.5s": 0,
+      "execucoes_com_pior_>=0.1s": 0,
+      "pior_coincide_com_checkpoint": 0,
+      "checkpoints_feitos_pelo_heartbeat": 0,
+      "falhas_heartbeat": 0
+    },
+    "runs": [
+      {
+        "n": 44,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006413500086637214,
+        "worst": 0.016621100017800927,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 41,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.00061779998941347,
+        "worst": 0.0717000000004191,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006292999896686524,
+        "worst": 0.02534439999726601,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006297999934758991,
+        "worst": 0.01971289998618886,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006139999895822257,
+        "worst": 0.025411400012671947,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006590000120922923,
+        "worst": 0.03416710000601597,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 46,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006279500084929168,
+        "worst": 0.031084399990504608,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 41,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006452999950852245,
+        "worst": 0.04415449997759424,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006360000115819275,
+        "worst": 0.04097199998795986,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 44,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006424500024877489,
+        "worst": 0.030534099991200492,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006621000065933913,
+        "worst": 0.02929850001237355,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 39,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0007379000016953796,
+        "worst": 0.07846319998498075,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 43,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.000747200014302507,
+        "worst": 0.020986100018490106,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 41,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0007015999872237444,
+        "worst": 0.046931999997468665,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 45,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0006504000048153102,
+        "worst": 0.014905500021995977,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      }
+    ]
+  },
+  "cpu_saturada+hb_sem_autocheckpoint": {
+    "summary": {
+      "condicao": "cpu_saturada+hb_sem_autocheckpoint",
+      "repeticoes": 15,
+      "pior_max": 0.09,
+      "pior_p50": 0.038,
+      "execucoes_com_pior_>=0.5s": 0,
+      "execucoes_com_pior_>=0.1s": 0,
+      "pior_coincide_com_checkpoint": 0,
+      "checkpoints_feitos_pelo_heartbeat": 0,
+      "falhas_heartbeat": 0
+    },
+    "runs": [
+      {
+        "n": 37,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0020306000078562647,
+        "worst": 0.025811699975747615,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 36,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0023655000113649294,
+        "worst": 0.03223670000443235,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 31,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.004041600011987612,
+        "worst": 0.035587299993494526,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 28,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.007366499994532205,
+        "worst": 0.030462299997452646,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 33,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.000983200006885454,
+        "worst": 0.055876600003102794,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 39,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0010157999931834638,
+        "worst": 0.022479200008092448,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 34,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.002102550002746284,
+        "worst": 0.038819000008516014,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 26,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.004665250002290122,
+        "worst": 0.08880640001734719,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 34,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0034229999873787165,
+        "worst": 0.0328665999986697,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 27,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.002371200011111796,
+        "worst": 0.0899277999997139,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 39,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.0007539000071119517,
+        "worst": 0.046887800010154024,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 32,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.005245899985311553,
+        "worst": 0.03083800000604242,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 30,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.004279449989553541,
+        "worst": 0.07382369998958893,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 28,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.007406800010357983,
+        "worst": 0.04726069999742322,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      },
+      {
+        "n": 35,
+        "status": "timeout",
+        "fails": 0,
+        "p50": 0.004024900001240894,
+        "worst": 0.03809049999108538,
+        "worst_checkpoint": false,
+        "checkpoints_in_hb": 0,
+        "over_05": 0,
+        "over_01": 0
+      }
+    ]
+  }
+}
