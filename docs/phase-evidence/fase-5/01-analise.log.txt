@@ -1,0 +1,12 @@
+=== A1 execução 1 = Ana/Bruno; execução 2 = Ana/Carla
+  get_all → ['ana', 'bruno', 'carla'] (Bruno ausente na execução 2 continua na 'lista')
+=== A2 mesma página gravada duas vezes (retry após crash) × releitura legítima
+  1ª=1 novo(s); 2ª=0 novo(s); nenhuma identidade de tentativa: repetição e releitura são iguais
+=== A3 página vazia gravada
+  add_batch([]) → 0; sem registro de página, qualidade ou motivo
+=== A4 dois escritores sem concessão
+  contas gravando o mesmo alvo ao mesmo tempo: ['conta0', 'conta1'], erros=0 (nenhuma exclusividade)
+=== A5 proveniência
+  colunas: ['profile_id', 'list_type', 'username', 'first_seen_at', 'last_seen_at', 'source_account']
+  existe run/page/attempt/quality/policy_version: False
+  tabelas: ['profiles_seen']
