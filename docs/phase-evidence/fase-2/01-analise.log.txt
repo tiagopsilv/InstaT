@@ -1,0 +1,35 @@
+
+=== M1 challenge/restrição com pool de 3 contas
+  resultado: AllEnginesBlockedError
+  contas usadas após a 1ª restrição: 2 (login em ['acc0', 'acc1', 'acc2'])
+  esperas de backoff: 3
+
+=== M2 429 com pool de 3 contas
+  resultado: AllEnginesBlockedError
+  tentativas multiplicadas por outras contas: 2 (login em ['acc0', 'acc1', 'acc2'])
+  esperas de backoff: 3
+
+=== M3 challenge sem pool, 2 engines
+  resultado: AllEnginesBlockedError
+  após challenge no 1º engine, o 2º engine (mesma conta) tentou: True
+
+=== M4 httpx: classificação de respostas
+  407 NO_USER                      -> BlockedError
+  407 TRAFFIC_EXHAUSTED            -> BlockedError
+  407 THREADS_EXHAUSTED            -> BlockedError
+  407 PORT_NOT_ALLOWED             -> BlockedError
+  407 USER_BLOCKED                 -> BlockedError
+  403 PORT_BLOCKED (proxy)         -> BlockedError
+  502 NO_HOST_CONNECTION (proxy)   -> BlockedError
+  503 NO_RAY (proxy)               -> BlockedError
+  500 do serviço                   -> BlockedError
+  429 Retry-After: 120             -> RateLimitError retry_after=—
+  timeout                          -> BlockedError
+
+=== M5 SmartBackoff
+  50 chamadas de wait() aceitas sem teto de tentativas: True
+  wait() aceita Retry-After: False
+  espera usa sleep real (human_delay → time.sleep): True
+
+=== M6 until_complete com engine sempre bloqueado
+  challenge em toda tentativa: 4 tentativas, 3 esperas somando 270 s de sleep real
