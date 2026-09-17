@@ -79,6 +79,10 @@ class JobStore:
         self.path, self.ttl, self.busy_timeout, self.clock = path, float(ttl), float(busy_timeout), clock
         self.c = self._open_with_retry(path, busy_timeout)
         self._fault_hook: Optional[Callable[[], None]] = None
+        # Intervalo exato da última concessão/liberação desta instância (horários
+        # das próprias transações): evidência para auditoria de exclusividade (F4).
+        self.last_lease: Optional[Dict[str, Any]] = None
+        self.last_release: Optional[Dict[str, Any]] = None
         if create:
             self.c.execute("PRAGMA journal_mode=WAL")
             self.c.executescript(SCHEMA)
@@ -185,8 +189,55 @@ class JobStore:
             if cur.rowcount != 1:
                 raise _Rollback(None)
             gen = self.c.execute("SELECT lease_gen FROM accounts WHERE account=?", (acct,)).fetchone()[0]
+            self.last_lease = {"account": acct, "owner": owner, "gen": gen, "start": t, "until": t + self.ttl}
             return (acct, owner, gen)
         return self._tx(now, body)
+
+    def release_lease(self, tok: Token, now: Optional[float] = None) -> bool:
+        """Encerra a concessão só se conta, dono e geração conferem e ela está vigente.
+
+        Liberação tardia de um dono antigo (geração anterior) não tem efeito.
+        """
+        acct, owner, gen = tok
+
+        def body(t: float) -> bool:
+            cur = self.c.execute("""UPDATE accounts SET lease_until=?
+                                    WHERE account=? AND lease_owner=? AND lease_gen=? AND lease_until>?""",
+                                 (t, acct, owner, gen, t))
+            released = cur.rowcount == 1
+            self.last_release = {"account": acct, "owner": owner, "gen": gen, "at": t, "released": released}
+            return released
+        return self._tx(now, body)
+
+    def lease_valid(self, tok: Token, now: Optional[float] = None) -> bool:
+        acct, owner, gen = tok
+        t = self.clock() if now is None else now
+        return self.c.execute("""SELECT 1 FROM accounts WHERE account=? AND lease_owner=? AND lease_gen=?
+                                 AND lease_until>?""", (acct, owner, gen, t)).fetchone() is not None
+
+    def set_endpoint_cooldown(self, acct: str, endpoint: str, until: float, reason: str,
+                              now: Optional[float] = None) -> None:
+        """Cooldown por (conta, endpoint); nunca encurta um cooldown maior já gravado."""
+        def body(t: float) -> None:
+            self.c.execute("""INSERT INTO endpoint_cooldowns(account, endpoint, cooldown_until, reason)
+                              VALUES(?,?,?,?)
+                              ON CONFLICT(account, endpoint) DO UPDATE SET
+                                cooldown_until = MAX(cooldown_until, excluded.cooldown_until),
+                                reason = excluded.reason""", (acct, endpoint, until, reason))
+        self._tx(now, body)
+
+    def eligible_accounts(self, endpoint: str, now: Optional[float] = None) -> List[str]:
+        """Contas que `acquire` concederia agora (mesmo predicado, só leitura)."""
+        t = self.clock() if now is None else now
+        return [r[0] for r in self.c.execute(
+            """SELECT account FROM accounts a
+               WHERE auth_state='ok'
+                 AND (restricted_until IS NULL OR restricted_until<=?)
+                 AND (restricted_at IS NULL OR (auth_validated_at IS NOT NULL AND auth_validated_at>=restricted_at))
+                 AND (lease_until IS NULL OR lease_until<=?)
+                 AND NOT EXISTS (SELECT 1 FROM endpoint_cooldowns e
+                                  WHERE e.account=a.account AND e.endpoint=? AND e.cooldown_until>?)
+               ORDER BY account""", (t, t, endpoint, t))]
 
     def heartbeat(self, tok: Token, now: Optional[float] = None) -> str:
         acct, owner, gen = tok
@@ -311,8 +362,10 @@ class JobStore:
                                     WHERE run_id=? AND account=? AND lease_owner=? AND lease_gen=?
                                       AND ended_at IS NULL""", (t, reason, run, acct, owner, gen))
             if cur.rowcount == 1:
-                self.c.execute("""UPDATE accounts SET lease_until=? WHERE account=? AND lease_owner=? AND lease_gen=?
-                                  AND lease_until>?""", (t, acct, owner, gen, t))
+                ended = self.c.execute("""UPDATE accounts SET lease_until=? WHERE account=? AND lease_owner=?
+                                          AND lease_gen=? AND lease_until>?""", (t, acct, owner, gen, t))
+                self.last_release = {"account": acct, "owner": owner, "gen": gen, "at": t,
+                                     "released": ended.rowcount == 1, "via": "stop_run"}
                 self.c.execute("UPDATE jobs SET status='partial', end_reason=?, updated_at=? WHERE job_id=?",
                                (reason, t, job))
         self._tx(now, body)

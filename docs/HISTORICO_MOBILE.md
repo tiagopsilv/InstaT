@@ -14,6 +14,8 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | 16/09/2026 | F1 liberada em paralelo ao bloqueio da F6a | sem conta real nem tráfego (a F1 usa só fakes) | resposta do Tiago nesta sessão |
 | 16/09/2026 | F6a: fonte do APK = imagem de emulador com Play Store; tradução ARM = **não usar**, avaliar alternativa | **conflito aberto**: as imagens x86_64 do emulador dependem de tradução ARM, a menos que a Play entregue uma variante x86_64 do Instagram (hipótese não verificada, que exige login com conta Google, ou seja, um aval com teto). Alternativas: host ARM64 ou dispositivo físico | resposta do Tiago nesta sessão |
 | 16/09/2026 | Trailers `Claude-Session` nos commits já publicados: manter como estão | sem reescrita de histórico | resposta do Tiago nesta sessão |
+| 17/09/2026 | F6a: host **AWS Graviton t4g** (ARM64, sem tradução ARM); APK via **GApps + login Google** no redroid; **teto US$ 10** para a instância do spike | sem conta Instagram e sem proxy nesta fase; login Google manual pelo Tiago; aguarda AWS CLI/credenciais e Budget | resposta do Tiago nesta sessão |
+| 17/09/2026 | Pendência B02: **medir no CI** antes de decidir o limite | PR somente CI, sem mudar código nem expectativa | resposta do Tiago nesta sessão |
 
 **Consequência prática:** como nenhum teto de tráfego pago nem lista de contas foi registrado, qualquer fase que use tráfego pago ou conta real precisa citar essa lacuna na pré-análise e pedir aval com teto antes de executar.
 
@@ -32,14 +34,15 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | Fase | Status | Início | Fim | Evidência | Commits / PR |
 |---|---|---|---|---|---|
 | F0 | **entregue — aceite de CI ok**: run 35148419267 com lint, 3.12, 3.13 (na reexecução; a 1ª falha foi rate limit do webdriver-manager, corrigido na F1) e build/smoke do wheel | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-0/` | `b06443d`; PR #3 (rascunho); PR #4 de CI fechado sem merge |
-| F6a | **bloqueada (passo 3)**: APK via Play Store decidido, mas tradução ARM vetada → conflito (ver Autorizações); redroid exige kernel WSL customizado | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
+| F6a | **bloqueada por pré-requisito de acesso**: decisões de host/APK/teto tomadas (ver Autorizações); falta AWS CLI + credenciais e conta Google do Tiago | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
 | F6b | bloqueada por dependência (F6a) | — | — | — | — |
 | F1 | **entregue — sete passos executados; CI ok** (run 35152282343: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-1/` | `923a9ad` (testes vermelhos), `5255349` (implementação); PR #5 (rascunho, base F0); PR #6 de CI fechado sem merge |
 | F2 | **entregue — sete passos executados; CI ok** (run 35166815188: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-2/` | `2e9f91c` (vermelho), `6cf5fbb` (implementação); PR #7 (rascunho, base F1); PR #8 de CI fechado sem merge |
 | F5 | **entregue — sete passos executados; CI ok** (run 35215371605: lint, 3.12, 3.13, build). Mutações 8/8; intermitência do E1 no Windows corrigida | 16/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-5/` | `6a6ad53` (vermelho), `b6c5ed4` (implementação); PR #9 (rascunho, base F2); PR #10 de CI fechado sem merge |
 | F3 | **entregue — sete passos executados; CI ok na reexecução** (run 35217993911; 1ª execução falhou no cenário B02 da F5 por latência de heartbeat 0,529 s > 0,5 s — intermitência pendente de investigação) | 17/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-3/` | `b5569c2`, `ad36b5c` (vermelhos), `96ac838` (implementação); PR #11 (rascunho, base F5); PR #12 de CI fechado sem merge |
 | F6, F7 | não iniciadas | — | — | — | — |
-| F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
+| F4 | **entregue — sete passos executados; CI ok** (run 35237933020: lint, 3.12, 3.13, build). Mutações 8/8 | 17/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-4/` | `7d22fdd` (vermelho), `d196f97` (implementação); PR #13 (rascunho, base F3); PR #14 de CI fechado sem merge |
+| F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 
 ## Desvios registrados
 
@@ -48,4 +51,4 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 
 ## Pendências abertas
 
-- **B02 (F5) intermitente no CI:** latência do heartbeat 0,529 s > 0,5 s uma vez em 3.13/Linux; a reexecução passou. Medir a distribuição antes de mexer no limite ou no desenho.
+- **B02 (F5) intermitente no CI:** 0,529 s > 0,5 s uma vez (3.13/Linux, run 35217993911). **Medido:** local em 60 execuções, pior 0,172 s; no CI (run 35239204440) em 200 execuções instrumentadas e 80 do B02 original (80/80 ok), pior 0,070 s. Não reproduzido; causa não confirmada. Limite mantido; recomendação: tratar como intermitência rara e reabrir se ocorrer mais 2 vezes (`docs/phase-evidence/pendencia-b02/`).

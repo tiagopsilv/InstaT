@@ -1,0 +1,13 @@
+=== A1 4 workers, 2 contas
+  sessões simultâneas por conta (pico): {'a1': 2, 'a2': 2}
+=== A2 3 workers, sem accounts
+  sessões simultâneas por conta (pico): {'unica': 3}
+=== A3 worker 1 cai durante extract
+  resultado devolvido: ['c0_x', 'c2_x'] — sem indicação de falha nem motivo
+=== A4 SessionPool em dois processos
+  conta entregue a cada processo: ['conta_a', 'conta_a']
+=== A5 cooldown expira e libera conta bloqueada (challenge)
+  logo após bloqueio: None
+  6 h depois, sem revisão manual: conta_a
+=== A6 WorkerPool
+  add_worker verifica conta repetida ou limite por contas: False

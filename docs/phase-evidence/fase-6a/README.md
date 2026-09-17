@@ -1,6 +1,6 @@
 # Fase F6a — Spike de viabilidade Android, sem conta Instagram
 
-Status: **bloqueada (passo 3 — pré-análise): fonte do APK e uso de imagem com tradução ARM dependem de decisão do Tiago**
+Status: **bloqueada (pré-requisitos de acesso): decisões tomadas em 17/09/2026; aguarda credenciais AWS e conta Google do Tiago**
 Base: roadmap v13.7; host Windows 11 da sessão de 16/09/2026
 Nenhuma imagem baixada, nenhum container iniciado, nenhum APK obtido, nenhuma conta usada, nenhum tráfego pago.
 
@@ -48,3 +48,35 @@ Não iniciados. A fase não pode escrever testes de provisionamento (passo 4) an
 
 ## F6b
 Depende do F6a aprovado → **bloqueada por dependência**.
+
+## Decisões de 17/09/2026 (desbloqueio parcial)
+
+| Bloqueio | Decisão do Tiago | Consequência |
+|---|---|---|
+| B2 — tradução ARM | **Não usar**; host **ARM64** em vez de x86_64 | redroid/Android ARM64 nativo, sem `libndk`/`libhoudini` |
+| Host | **AWS Graviton t4g** (Ubuntu 24.04 ARM64, módulos binder via `linux-modules-extra`) | B3 (kernel WSL customizado) deixa de se aplicar |
+| B1 — fonte do APK | **GApps + login Google** no redroid ARM64 (Play Store) | uso de **conta Google** → aval coberto por esta decisão; a conta e o login são manuais pelo Tiago |
+| Teto de custo | **US$ 10** para a F6a (instância em nuvem; sem conta Instagram, sem proxy) | ~150 h de t4g.large em us-east-1 (US$ 0,0672/h, preço de tabela); instância ligada só durante o spike |
+
+**Pesquisa usada na decisão:**
+- redroid é multi-arch (arm64) e, em Ubuntu, exige `linux-modules-extra` e `modprobe binder_linux` [S5];
+- existem relatos de `device offline` em Oracle arm64 (redroid-doc #43/#46);
+- a adição de GApps ao redroid é feita por projetos de terceiros (redroid-script / MindTheGapps), fora do projeto oficial. **Hipótese a medir**: compatibilidade e integridade;
+- o Oracle free tier caiu para 2 OCPU / 12 GB em 2026.
+
+Fontes:
+- [redroid-doc](https://github.com/remote-android/redroid-doc)
+- [redroid-modules](https://github.com/remote-android/redroid-modules)
+- [redroid-doc #43](https://github.com/remote-android/redroid-doc/issues/43)
+- [redroid-script](https://github.com/ayasa520/redroid-script)
+- [AWS EC2 on-demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/)
+- [t4g.large (Vantage)](https://instances.vantage.sh/aws/ec2/t4g.large)
+- [Oracle free tier 2026 (InfoQ)](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
+
+**Pré-requisitos pendentes antes do passo 3 da F6a:**
+1. **AWS CLI e credenciais:** a AWS CLI não está instalada neste host e não há credenciais. É preciso uma conta AWS do Tiago e login dele.
+   - **Recomendado:** usuário IAM ou perfil SSO com permissão só de EC2 na região escolhida.
+   - **Recomendado:** um **AWS Budget de US$ 10** com alerta, como trava do teto.
+2. **Conta Google** para a Play Store: o login é feito manualmente pelo Tiago na tela do Android (via scrcpy/noVNC em túnel SSH). A senha **nunca** passa pelo agente nem por arquivos do repositório.
+3. **Acesso:** chave SSH gerada localmente; security group liberando só a porta 22 do IP do Tiago; ADB e VNC só por túnel SSH, nunca expostos.
+4. **Encerramento:** `terminate` da instância ao fim do spike e confirmação de zero recursos ativos, registrada.

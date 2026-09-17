@@ -6,10 +6,13 @@ Suas coletas são unificadas via set compartilhado. Quando a união
 atinge `stop_threshold * target_count`, `stop_event` é sinalizado
 e todos os workers saem graciosamente via `should_stop` callback.
 
-Uso de contas:
-- Se `accounts` fornecido: cada worker usa conta da rotação.
-- Se não: todos usam credenciais default (RISCO: IG pode bloquear
-  múltiplas sessões simultâneas da mesma conta).
+Uso de contas (F4 — exclusividade):
+- Se `accounts` fornecido: no máximo UM worker por conta distinta; `workers`
+  é limitado ao número de contas distintas (nunca a mesma conta em duas
+  sessões simultâneas).
+- Se não: apenas 1 worker com as credenciais default.
+- Falhas por worker ficam em `parallel.last_report`.
+- Exclusividade entre processos: ver `instat.scheduler.AccountScheduler`.
 
 API externa (HttpxEngine) NÃO é usada aqui — apenas fallback via
 quem chama (ex.: get_both → parallel → httpx).
@@ -17,7 +20,7 @@ quem chama (ex.: get_both → parallel → httpx).
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from loguru import logger
 
@@ -27,6 +30,10 @@ try:
 except ImportError:
     from engines.selenium_engine import SeleniumEngine
     from login import InstaLogin
+
+
+# Relatório da última chamada de parallel_extract (workers efetivos e falhas).
+last_report: dict = {}
 
 
 class ParallelCoordinator:
@@ -96,17 +103,26 @@ def parallel_extract(
     if not accounts and not default_credentials:
         raise ValueError("must provide accounts or default_credentials")
 
-    if accounts and len(accounts) < workers:
+    distinct: List[Dict[str, str]] = []
+    seen_users: Set[str] = set()
+    for acc in accounts:
+        if acc['username'] not in seen_users:
+            seen_users.add(acc['username'])
+            distinct.append(acc)
+    capacity = len(distinct) if distinct else 1
+    if workers > capacity:
         logger.warning(
-            f"parallel_extract: {workers} workers with only {len(accounts)} accounts "
-            "— sessions will share credentials (risk of IG block)"
+            f"parallel_extract: {workers} workers requested but only {capacity} distinct "
+            "account(s) — capping workers (never the same account in two sessions)"
         )
+        workers = capacity
 
     coord = ParallelCoordinator(target_count, stop_threshold)
+    per_worker: List[Dict[str, Any]] = [{} for _ in range(workers)]
 
     def _resolve_creds(idx: int) -> tuple:
-        if accounts:
-            acc = accounts[idx % len(accounts)]
+        if distinct:
+            acc = distinct[idx]
             return acc['username'], acc['password']
         return default_credentials
 
@@ -127,9 +143,12 @@ def parallel_extract(
                 should_stop=coord.should_stop,
             )
             coord.ingest(set(result))
+            per_worker[idx] = {"worker": idx, "account": username, "status": "ok", "collected": len(result)}
             return set(result)
         except Exception as e:
             logger.warning(f"parallel worker {idx} failed: {e}")
+            per_worker[idx] = {"worker": idx, "account": username, "status": "error",
+                               "error": f"{type(e).__name__}: {e}"}
             return set()
         finally:
             try:
@@ -148,6 +167,8 @@ def parallel_extract(
         f"parallel_extract: {workers} workers collected {total} unique "
         f"{list_type} for {profile_id} in {elapsed:.1f}s"
     )
+    last_report.clear()
+    last_report.update({"workers": workers, "per_worker": per_worker, "total": total})
     return coord.snapshot()
 
 

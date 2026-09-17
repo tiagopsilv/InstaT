@@ -53,10 +53,13 @@ class TestParallelExtract(unittest.TestCase):
                 return self._make_engine({f'u{i}' for i in range(50)})
             return self._make_engine({f'u{i}' for i in range(40, 90)})
 
+        # F4: dois workers exigem duas contas distintas (antes, as duas sessões usavam a mesma
+        # credencial default — agora parallel_extract limita a 1 worker nesse caso).
         result = parallel_extract(
             'target', 'followers',
             workers=2,
             default_credentials=('u', 'p'),
+            accounts=[{'username': 'c1', 'password': 'p'}, {'username': 'c2', 'password': 'p'}],
             target_count=None,
             engine_factory=factory,
         )
@@ -122,10 +125,12 @@ class TestParallelExtract(unittest.TestCase):
                 e.extract.return_value = {'u1', 'u2'}
             return e
 
+        # F4: duas contas distintas (ver test_union_of_workers).
         result = parallel_extract(
             'target', 'followers',
             workers=2,
             default_credentials=('u', 'p'),
+            accounts=[{'username': 'c1', 'password': 'p'}, {'username': 'c2', 'password': 'p'}],
             target_count=None,
             engine_factory=factory,
         )
