@@ -14,6 +14,8 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | 16/09/2026 | F1 liberada em paralelo ao bloqueio da F6a | sem conta real nem tráfego (a F1 usa só fakes) | resposta do Tiago nesta sessão |
 | 16/09/2026 | F6a: fonte do APK = imagem de emulador com Play Store; tradução ARM = **não usar**, avaliar alternativa | **conflito aberto**: as imagens x86_64 do emulador dependem de tradução ARM, a menos que a Play entregue uma variante x86_64 do Instagram (hipótese não verificada, que exige login com conta Google, ou seja, um aval com teto). Alternativas: host ARM64 ou dispositivo físico | resposta do Tiago nesta sessão |
 | 16/09/2026 | Trailers `Claude-Session` nos commits já publicados: manter como estão | sem reescrita de histórico | resposta do Tiago nesta sessão |
+| 17/09/2026 | F6a: host **AWS Graviton t4g** (ARM64, sem tradução ARM); APK via **GApps + login Google** no redroid; **teto US$ 10** para a instância do spike | sem conta Instagram e sem proxy nesta fase; login Google manual pelo Tiago; aguarda AWS CLI/credenciais e Budget | resposta do Tiago nesta sessão |
+| 17/09/2026 | Pendência B02: **medir no CI** antes de decidir o limite | PR somente CI, sem mudar código nem expectativa | resposta do Tiago nesta sessão |
 
 **Consequência prática:** como nenhum teto de tráfego pago nem lista de contas foi registrado, qualquer fase que use tráfego pago ou conta real precisa citar essa lacuna na pré-análise e pedir aval com teto antes de executar.
 
@@ -32,7 +34,7 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | Fase | Status | Início | Fim | Evidência | Commits / PR |
 |---|---|---|---|---|---|
 | F0 | **entregue — aceite de CI ok**: run 35148419267 com lint, 3.12, 3.13 (na reexecução; a 1ª falha foi rate limit do webdriver-manager, corrigido na F1) e build/smoke do wheel | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-0/` | `b06443d`; PR #3 (rascunho); PR #4 de CI fechado sem merge |
-| F6a | **bloqueada (passo 3)**: APK via Play Store decidido, mas tradução ARM vetada → conflito (ver Autorizações); redroid exige kernel WSL customizado | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
+| F6a | **bloqueada por pré-requisito de acesso**: decisões de host/APK/teto tomadas (ver Autorizações); falta AWS CLI + credenciais e conta Google do Tiago | 16/09/2026 | — | `docs/phase-evidence/fase-6a/` | — |
 | F6b | bloqueada por dependência (F6a) | — | — | — | — |
 | F1 | **entregue — sete passos executados; CI ok** (run 35152282343: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-1/` | `923a9ad` (testes vermelhos), `5255349` (implementação); PR #5 (rascunho, base F0); PR #6 de CI fechado sem merge |
 | F2 | **entregue — sete passos executados; CI ok** (run 35166815188: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-2/` | `2e9f91c` (vermelho), `6cf5fbb` (implementação); PR #7 (rascunho, base F1); PR #8 de CI fechado sem merge |
