@@ -39,7 +39,8 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | F5 | **entregue — sete passos executados; CI ok** (run 35215371605: lint, 3.12, 3.13, build). Mutações 8/8; intermitência do E1 no Windows corrigida | 16/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-5/` | `6a6ad53` (vermelho), `b6c5ed4` (implementação); PR #9 (rascunho, base F2); PR #10 de CI fechado sem merge |
 | F3 | **entregue — sete passos executados; CI ok na reexecução** (run 35217993911; 1ª execução falhou no cenário B02 da F5 por latência de heartbeat 0,529 s > 0,5 s — intermitência pendente de investigação) | 17/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-3/` | `b5569c2`, `ad36b5c` (vermelhos), `96ac838` (implementação); PR #11 (rascunho, base F5); PR #12 de CI fechado sem merge |
 | F6, F7 | não iniciadas | — | — | — | — |
-| F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
+| F4 | **entregue — sete passos executados; CI pendente**. Mutações 8/8 | 17/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-4/` | branch `f4/scheduler-exclusividade` |
+| F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 
 ## Desvios registrados
 

@@ -38,7 +38,17 @@ def retry(fn):
                 raise
             time.sleep(0.005)
     raise RuntimeError("database locked após 50 tentativas")
+if slow_every < 0:
+    # modo "hold": adquire uma conta, registra e segura a concessão até ser morto
+    while True:
+        for acct in ("a1", "a2"):
+            tok = retry(lambda: m.acquire(acct, me, now=None))
+            if tok is not None:
+                log(ev="hold", **m.last_lease)
+                time.sleep(3600)
+        time.sleep(0.01)
 done = 0
+granted = 0
 while done < iterations:
     acct = rng.choice(["a1", "a2", "a_bloqueada"])
     tok = retry(lambda: m.acquire(acct, me, now=None))
@@ -47,9 +57,10 @@ while done < iterations:
         log(ev="miss", acct=acct)
         continue
     lease = dict(m.last_lease)
+    granted += 1
     job = f"J_{acct}"
     st, run = retry(lambda: m.claim(job, tok, now=None))
-    slow = slow_every and done % slow_every == 0
+    slow = slow_every and granted % slow_every == 0
     if slow:
         time.sleep(TTL + 0.25)
         if st == "ok":
@@ -60,11 +71,14 @@ while done < iterations:
         log(ev="lease", **lease, end=lease["until"], slow=True, late_commit=r, claim=st)
         continue
     time.sleep(rng.uniform(0, 0.003))
+    m.last_release = None
     if st == "ok":
+        # stop_run também encerra a concessão (F5); a 1ª liberação efetiva define o fim
         retry(lambda: m.stop_run(tok, job, run, "technical_error", now=None))
+    ended_by_stop = m.last_release if (m.last_release and m.last_release["released"]) else None
     released = retry(lambda: m.release_lease(tok, now=None))
-    rel = m.last_release
-    end = min(rel["at"], lease["until"]) if released else lease["until"]
+    rel = ended_by_stop or (m.last_release if released else None)
+    end = min(rel["at"], lease["until"]) if rel else lease["until"]
     log(ev="lease", **lease, end=end, slow=False, claim=st)
 """
 
@@ -81,17 +95,27 @@ def _setup(path):
     return t_blocked
 
 
-def _run(tmp_path, procs, iterations, slow_every=60, kill_one=False):
+def _run(tmp_path, procs, iterations, slow_every=15, kill_one=False):
     path = str(tmp_path / f"d{procs}.db")
     t_blocked = _setup(path)
     logs = [str(tmp_path / f"p{procs}_{i}.jsonl") for i in range(procs)]
+    modes = [(-1 if kill_one and i == 0 else slow_every) for i in range(procs)]
     ps = [subprocess.Popen([sys.executable, "-c", CHILD, ROOT, path, f"p{i}", str(iterations), logs[i],
-                            str(slow_every)], stderr=subprocess.PIPE, text=True) for i in range(procs)]
+                            str(modes[i])], stderr=subprocess.PIPE, text=True) for i in range(procs)]
     killed = None
     if kill_one:
-        time.sleep(1.0)
-        ps[0].kill()
-        killed = time.time()
+        # p0 roda em modo "hold": o kill acontece com a concessão comprovadamente detida
+        deadline = time.time() + 30
+        while time.time() < deadline and killed is None:
+            if os.path.exists(logs[0]):
+                with open(logs[0], encoding="utf-8") as f:
+                    holds = [json.loads(line) for line in f if '"hold"' in line]
+                if holds:
+                    ps[0].kill()
+                    h = holds[0]
+                    killed = {"at": time.time(), "account": h["account"], "gen": h["gen"],
+                              "lease_until": h["until"]}
+            time.sleep(0.005)
     for p in ps:
         p.wait(timeout=600)
     errs = [p.stderr.read() for i, p in enumerate(ps) if p.returncode != 0 and not (kill_one and i == 0)]
@@ -104,7 +128,8 @@ def _run(tmp_path, procs, iterations, slow_every=60, kill_one=False):
 
 
 def _check(events, t_blocked):
-    leases = [e for e in events if e["ev"] == "lease"]
+    # concessão "hold" do processo morto: nunca liberada, termina em lease_until
+    leases = [e for e in events if e["ev"] == "lease"] +         [{**e, "end": e["until"]} for e in events if e["ev"] == "hold"]
     overlaps = 0
     for acct in ACCOUNTS + ["a_bloqueada"]:
         iv = sorted((e["start"], e["end"], e["owner"], e["gen"]) for e in leases if e["account"] == acct)
@@ -136,12 +161,16 @@ def test_dispute_between_processes_no_double_lease(tmp_path, procs, iterations):
 
 
 def test_killed_process_lease_recovered_after_ttl_and_restriction_kept(tmp_path):
-    path, t_blocked, events, errs, killed = _run(tmp_path, 2, 400, slow_every=0, kill_one=True)
+    path, t_blocked, events, errs, killed = _run(tmp_path, 2, 1500, slow_every=0, kill_one=True)
     assert not errs, errs
+    assert killed is not None, "p0 nunca foi visto com concessão vigente"
     r = _check(events, t_blocked)
     assert r["overlaps"] == 0 and r["blocked_grants"] == 0
-    after_kill = [e for e in events if e["ev"] == "lease" and e["owner"] == "p1" and e["start"] > killed]
-    assert after_kill, "o processo sobrevivente não readquiriu nenhuma conta após a morte do outro"
+    # recuperação: p1 obtém A MESMA conta que p0 detinha, só depois do fim daquela concessão
+    same = [e for e in events if e["ev"] == "lease" and e["owner"] == "p1" and e["account"] == killed["account"]
+            and e["start"] > killed["at"]]
+    assert same, "o sobrevivente não readquiriu a conta do processo morto"
+    assert min(e["start"] for e in same) >= killed["lease_until"] - 1e-9
     c = sqlite3.connect(path)
     assert c.execute("SELECT auth_state FROM accounts WHERE account='a_bloqueada'").fetchone()[0] == "needs_attention"
     c.close()

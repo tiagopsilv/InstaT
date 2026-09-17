@@ -1,0 +1,1 @@
+{"disputa2": {"leases": 159, "overlaps": 0, "blocked_grants": 0, "late_commits": 10, "late_accepted": 0}, "morto": {"leases": 919, "overlaps": 0, "blocked_grants": 0, "late_commits": 0, "late_accepted": 0}, "liberacao_tardia": {"token_de_p0_no_kill": ["a2", "p0", 1], "adquiriu_nova": true, "release_do_token_antigo": false, "posse_nova_continua_valida": true}}

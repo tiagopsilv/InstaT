@@ -1,0 +1,5 @@
+DETECTADA              M7 conta em needs_attention concedida (sem checar estado nem liberação)
+    tests/test_f4_scheduler.py::test_challenge_or_restriction_marks_account_and_time_never_releases[exc1-restricted]
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[2-167]
+
+--- detectadas: 1/1

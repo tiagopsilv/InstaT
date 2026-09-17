@@ -1,0 +1,36 @@
+DETECTADA              M1 acquire concede com concessão vigente
+                              [100%]
+=========================== short test summary info ===========================
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[2-167]
+
+DETECTADA              M2 release_lease sem conferir dono e geração
+                          [100%]
+=========================== short test summary info ===========================
+FAILED tests/test_f4_scheduler.py::test_release_lease_only_by_current_owner_and_generation
+
+DETECTADA              M3 challenge não marca a conta
+    cheduler.py::test_challenge_or_restriction_marks_account_and_time_never_releases[exc0-needs_attention]
+FAILED tests/test_f4_scheduler.py::test_run_targets_challenge_stops_that_account_and_is_reported
+
+DETECTADA              M4 plan_workers sem limite de contas
+    ===============
+FAILED tests/test_f4_scheduler.py::test_plan_workers_limited_to_eligible_accounts
+FAILED tests/test_f4_scheduler.py::test_run_targets_one_account_per_worker_and_engine_owned_by_thread
+
+DETECTADA              M5 parallel_extract sem limite de workers
+                                    [100%]
+=========================== short test summary info ===========================
+FAILED tests/test_f4_scheduler.py::test_parallel_extract_never_shares_an_account
+
+DETECTADA              M6 commit sem checar validade da concessão (fencing)
+                              [100%]
+=========================== short test summary info ===========================
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[2-167]
+
+DETECTADA              M7 conta em needs_attention concedida (sem checar estado nem liberação)
+    tests/test_f4_scheduler.py::test_challenge_or_restriction_marks_account_and_time_never_releases[exc1-restricted]
+FAILED tests/test_f4_dispute.py::test_dispute_between_processes_no_double_lease[2-167]
+
+DETECTADA              M8 scheduler não libera a concessão ao sair
+    FAILED tests/test_f4_scheduler.py::test_lease_releases_on_success_and_on_technical_error
+--- detectadas: 8/8

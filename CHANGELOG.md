@@ -41,6 +41,21 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
   - `RateLimitError` ganhou `retry_after`.
 - **`Utils.wait_for_new_profiles`:** o laço em `StaleElementReferenceException` passou a ter teto (5).
 
+### Changed — exclusividade de contas no paralelismo (F4)
+- **`parallel_extract` nunca usa a mesma conta em duas sessões simultâneas.**
+  - `workers` é limitado ao número de contas **distintas** em `accounts`; sem `accounts`, roda 1 worker com a credencial default.
+  - Antes, o código só avisava e repetia credenciais.
+  - As falhas por worker ficam em `instat.parallel.last_report`.
+- **Novo `instat.scheduler.AccountScheduler`: exclusividade entre processos sobre o `JobStore` da F5**, sem nova transação de posse.
+  - **Concessão:** uma conta tem no máximo uma concessão vigente em qualquer processo; workers ≤ contas elegíveis.
+  - **Sinais:**
+    - challenge → `needs_attention`;
+    - restrição → `restricted`;
+    - nenhum dos dois é liberado pelo tempo, só manualmente com sessão validada;
+    - 429 → cooldown do endpoint.
+  - **Recursos:** falha técnica libera a concessão; engine criada, usada e encerrada na mesma thread.
+- **`JobStore`:** `release_lease`, `lease_valid`, `set_endpoint_cooldown`, `eligible_accounts`, `last_lease` e `last_release`.
+
 ### Changed — metadados de perfil sem Selenium (F3)
 - **`InstaExtractor.get_profile` não exige mais `_driver`.**
   - Delega para engines com a capacidade `profile_info`: Selenium lê o DOM como antes; `HttpxEngine` usa `web_profile_info`.
