@@ -51,4 +51,4 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 
 ## Pendências abertas
 
-- **B02 (F5) intermitente no CI:** latência do heartbeat 0,529 s > 0,5 s uma vez em 3.13/Linux; a reexecução passou. Medição local em 60 execuções (`docs/phase-evidence/pendencia-b02/`): pior 0,172 s com CPU saturada, nunca ≥ 0,5 s; sem evidência de checkpoint automático; causa não confirmada (H2 CPU / H3 disco do runner). **Decisão pendente:** manter limite, medir no CI ou revisar o limite (mudança de expectativa).
+- **B02 (F5) intermitente no CI:** 0,529 s > 0,5 s uma vez (3.13/Linux, run 35217993911). **Medido:** local em 60 execuções, pior 0,172 s; no CI (run 35239204440) em 200 execuções instrumentadas e 80 do B02 original (80/80 ok), pior 0,070 s. Não reproduzido; causa não confirmada. Limite mantido; recomendação: tratar como intermitência rara e reabrir se ocorrer mais 2 vezes (`docs/phase-evidence/pendencia-b02/`).
