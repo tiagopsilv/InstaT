@@ -41,6 +41,26 @@ All notable changes to InstaT are documented here. Format follows [Keep a Change
   - `RateLimitError` ganhou `retry_after`.
 - **`Utils.wait_for_new_profiles`:** o laço em `StaleElementReferenceException` passou a ter teto (5).
 
+### Added — persistência de jobs (F5)
+- **`instat.jobstore`** (roadmap §6.3): jobs, execuções, páginas, membros e observações em SQLite (WAL).
+  - **Garantias:**
+    - posse por concessão com geração (fencing);
+    - horário lido depois do `BEGIN IMMEDIATE`;
+    - idempotência por `attempt_id` + conteúdo canônico `page-v1`;
+    - no máximo uma página `trusted` por posição;
+    - releituras (2 adicionais) e execuções (3) limitadas;
+    - restrição e challenge só liberados manualmente com sessão validada.
+  - **Componentes:**
+    - spool local durável de tentativas;
+    - heartbeat em thread e conexão próprias;
+    - `CursorWorker` (leitura → spool → commit → ack);
+    - backup online em passo único com verificação pela cópia e comparação exata só em manutenção drenada;
+    - migração de `profiles_seen` como `suspect` (`legacy_import`).
+  - **Novas visões:** `JobStore.run_result(run_id)`, que usa só a própria execução, e `JobStore.job_view(job_id)`, com seleção, última tentativa e histórico observado rotulado.
+  - **Política:** `sanity-v1` gravada por página, com limites operacionais iniciais não calibrados.
+  - **Compatibilidade:** `get_followers`, `get_following`, `*_persistent` e `PersistentStore` não mudam.
+- **Abertura resiliente do banco:** um `disk I/O error` transitório logo após a morte de processos (medido no Windows: some em ~0,2 s, com `integrity_check` ok) é repetido com limite na abertura.
+
 ### Added
 - **Post metrics** — `extractor.get_recent_posts(profile_id, limit=N)` returns `List[PostMetrics]` (shortcode, likes_count, comments_count, timestamp, caption, hashtags, media_type, media_url) via `HttpxEngine` paginating the private `/feed/user/{user_id}/` endpoint. Feeds engagement formulas (TEP) without the consumer scraping post pages itself. Other engines raise `NotImplementedError` so the cascade falls through.
 - **Rich follower metadata** — `get_followers(..., with_metadata=True)` and `get_following(..., with_metadata=True)` return `List[ProfileSummary]` instead of `List[str]`. Populates `user_id` (numeric `pk`), `full_name`, `is_verified`, `is_private`, `is_business`, `profile_pic_url` from the IG private API. Selenium/Playwright degrade gracefully to username-only summaries.

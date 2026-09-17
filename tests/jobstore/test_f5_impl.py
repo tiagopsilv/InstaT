@@ -80,15 +80,19 @@ def test_now_is_read_after_waiting_for_the_lock(tmp_path):
     tok = m.acquire("A", "w1", now=None)
     t0 = time.time()
     m.c.execute("UPDATE accounts SET lease_until=? WHERE account='A'", (t0 + 1.0,))
-    holder = sqlite3.connect(m.path, isolation_level=None)
-    holder.execute("BEGIN IMMEDIATE")
-    released = threading.Event()
+    locked, released = threading.Event(), threading.Event()
 
-    def release_later():
+    def hold_lock():
+        # conexão criada na própria thread (correção de harness; expectativa inalterada)
+        holder = sqlite3.connect(m.path, isolation_level=None)
+        holder.execute("BEGIN IMMEDIATE")
+        locked.set()
         time.sleep(1.5)
         holder.execute("COMMIT")
+        holder.close()
         released.set()
-    threading.Thread(target=release_later).start()
+    threading.Thread(target=hold_lock).start()
+    assert locked.wait(5)
     time.sleep(0.1)
     result = m.heartbeat(tok, now=None)
     released.wait(5)
@@ -361,3 +365,82 @@ def test_legacy_public_contract_signatures_unchanged():
     assert str(inspect.signature(P.get_all)) == "(self, profile_id: str, list_type: str) -> List[str]"
     assert str(inspect.signature(P.add_batch)) == \
         "(self, profile_id: str, list_type: str, usernames, source_account: str) -> int"
+
+
+# ------------------------------------------------------------ desvio encontrado no passo 6
+def test_open_retries_transient_disk_io_error_after_crash(tmp_path, monkeypatch):
+    """Após matar processos no Windows, a 1ª abertura pode dar 'disk I/O error' por
+    ~0,2 s (handles ainda não liberados); integrity_check fica ok. A abertura deve
+    repetir com limite em vez de falhar o worker que reinicia."""
+    import instat.jobstore.store as st
+    path = str(tmp_path / "jobs.db")
+    JobStore(path).close()
+    real_connect = sqlite3.connect
+    calls = {"n": 0}
+
+    class Flaky:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, *a, **k):
+            if calls["n"] < 2:
+                calls["n"] += 1
+                raise sqlite3.OperationalError("disk I/O error")
+            return self._c.execute(*a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self._c, name)
+
+    monkeypatch.setattr(st.sqlite3, "connect", lambda *a, **k: Flaky(real_connect(*a, **k)))
+    monkeypatch.setattr(st.time, "sleep", lambda s: None)
+    m = JobStore(path, create=False)
+    assert calls["n"] == 2
+    assert m.c.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0
+
+
+def test_open_gives_up_on_persistent_disk_io_error(tmp_path, monkeypatch):
+    import instat.jobstore.store as st
+    path = str(tmp_path / "jobs.db")
+    JobStore(path).close()
+
+    class Broken:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, *a, **k):
+            raise sqlite3.OperationalError("disk I/O error")
+
+        def close(self):
+            self._c.close()
+
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(st.sqlite3, "connect", lambda *a, **k: Broken(real_connect(*a, **k)))
+    monkeypatch.setattr(st.time, "sleep", lambda s: None)
+    with pytest.raises(sqlite3.OperationalError):
+        JobStore(path, create=False)
+
+
+def test_open_probe_reads_the_database_file(tmp_path, monkeypatch):
+    """A sonda da abertura precisa LER o banco (cabeçalho/índice WAL): na repetição 5 do E1
+    em 3.13 a abertura passou (PRAGMA foreign_keys não lê o arquivo) e o 'disk I/O error'
+    apareceu no comando seguinte."""
+    import instat.jobstore.store as st
+    path = str(tmp_path / "jobs.db")
+    JobStore(path).close()
+    seen = []
+    real_connect = sqlite3.connect
+
+    class Spy:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, *a, **k):
+            seen.append(sql)
+            return self._c.execute(sql, *a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self._c, name)
+
+    monkeypatch.setattr(st.sqlite3, "connect", lambda *a, **k: Spy(real_connect(*a, **k)))
+    JobStore(path, create=False)
+    assert any("sqlite_master" in s or "schema_version" in s for s in seen), seen

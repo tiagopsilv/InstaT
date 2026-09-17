@@ -1,0 +1,4 @@
+E   sqlite3.OperationalError: disk I/O error
+C:\Projetos\InstaT-wt-f5\tests\jobstore\test_f5_impl.py:388: sqlite3.OperationalError: disk I/O error
+=========================== short test summary info ===========================
+FAILED tests/jobstore/test_f5_impl.py::test_open_retries_transient_disk_io_error_after_crash

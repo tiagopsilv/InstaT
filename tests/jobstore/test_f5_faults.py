@@ -256,7 +256,10 @@ def test_e1_eight_processes_one_hundred_kills_real_lock_waits(tmp_path):
         p.kill()
         p.wait()
     assert kills == 100
-    c = sqlite3.connect(path)
+    # abre pelo mesmo caminho de um worker que reinicia (repete 'disk I/O error' transitório;
+    # ver docs/phase-evidence/fase-5/README.md, desvio do passo 6)
+    c = JobStore(path, ttl=1.2, busy_timeout=0.2, create=False).c
+    assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     runs = c.execute("SELECT run_id, started_at, ended_at, next_pos FROM runs ORDER BY run_id").fetchall()
     assert len(runs) >= 5, "disputa não produziu execuções suficientes"
     for run_id, started, ended, next_pos in runs:

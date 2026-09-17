@@ -1,0 +1,36 @@
+DETECTADA              M1 fencing: commit sem checar validade da concessão
+    nfo ===========================
+FAILED tests/jobstore/test_e3.py::test_e3_scenario[T06] - AssertionError: T06...
+FAILED tests/jobstore/test_f5_impl.py::test_rejections_hold_in_100_percent_of_attempts
+
+DETECTADA              M2 I7: horário lido antes do BEGIN IMMEDIATE
+                                  [100%]
+=========================== short test summary info ===========================
+FAILED tests/jobstore/test_f5_impl.py::test_now_is_read_after_waiting_for_the_lock
+
+DETECTADA              M3 idempotência: sem verificação de attempt_id repetido
+    e/test_f5_faults.py::test_100_fault_injections_no_confirmed_page_lost_no_logical_duplicates
+FAILED tests/jobstore/test_f5_faults.py::test_killed_process_after_commit_resumes_without_loss_or_duplicate
+
+DETECTADA              M4 spool: ack antes do commit
+         [100%]
+=========================== short test summary info ===========================
+FAILED tests/jobstore/test_f5_faults.py::test_killed_process_after_commit_resumes_without_loss_or_duplicate
+
+DETECTADA              M5 limite de releituras desligado
+    nfo ===========================
+FAILED tests/jobstore/test_e3.py::test_e3_scenario[L01] - AssertionError: L01...
+FAILED tests/jobstore/test_f5_impl.py::test_rejections_hold_in_100_percent_of_attempts
+
+MUTAÇÃO NÃO APLICADA   M6 restrição liberada pelo tempo
+    0
+DETECTADA              M7 heartbeat: renova conta revogada
+    sertionError: T05...
+FAILED tests/jobstore/test_f5_impl.py::test_rejections_hold_in_100_percent_of_attempts
+FAILED tests/jobstore/test_f5_impl.py::test_heartbeat_thread_renews_and_detects_restriction
+
+DETECTADA              M8 backup permitido com transação aberta
+    
+--- detectadas: 7/8
+
+[exited with code 0]

@@ -1,0 +1,3 @@
+C:\Projetos\InstaT-wt-f5\tests\jobstore\test_f5_impl.py:446: AssertionError: ['PRAGMA foreign_keys=ON']
+=========================== short test summary info ===========================
+FAILED tests/jobstore/test_f5_impl.py::test_open_probe_reads_the_database_file

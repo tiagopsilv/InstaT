@@ -36,7 +36,8 @@ Cada fase detalha seus sete passos em `docs/phase-evidence/fase-N/README.md`.
 | F6b | bloqueada por dependência (F6a) | — | — | — | — |
 | F1 | **entregue — sete passos executados; CI ok** (run 35152282343: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-1/` | `923a9ad` (testes vermelhos), `5255349` (implementação); PR #5 (rascunho, base F0); PR #6 de CI fechado sem merge |
 | F2 | **entregue — sete passos executados; CI ok** (run 35166815188: lint, 3.12, 3.13, build) | 16/09/2026 | 16/09/2026 | `docs/phase-evidence/fase-2/` | `2e9f91c` (vermelho), `6cf5fbb` (implementação); PR #7 (rascunho, base F1); PR #8 de CI fechado sem merge |
-| F5, F3, F6, F7 | não iniciadas | — | — | — | — |
+| F5 | **entregue — sete passos executados; CI pendente**. Mutações 8/8; intermitência do E1 no Windows corrigida | 16/09/2026 | 17/09/2026 | `docs/phase-evidence/fase-5/` | branch `f5/resultados-checkpoints-atomicos` |
+| F3, F6, F7 | não iniciadas | — | — | — | — |
 | F4, F8, F9, F10, F11 | não iniciadas | — | — | — | — |
 
 ## Desvios registrados

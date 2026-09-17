@@ -1,11 +1,11 @@
-﻿início: 2026-09-16T21:57:06.3812782-03:00
+início: 2026-09-16T21:57:06.3812782-03:00
 
 =================================== ERRORS ====================================
 ______________ ERROR collecting tests/jobstore/test_f5_faults.py ______________
 ImportError while importing test module 'C:\Projetos\InstaT-wt-f5\tests\jobstore\test_f5_faults.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
-C:\Users\tiago\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
     return _bootstrap._gcd_import(name[level:], package, level)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 tests\jobstore\test_f5_faults.py:19: in <module>
@@ -15,7 +15,7 @@ _______________ ERROR collecting tests/jobstore/test_f5_impl.py _______________
 ImportError while importing test module 'C:\Projetos\InstaT-wt-f5\tests\jobstore\test_f5_impl.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
-C:\Users\tiago\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
     return _bootstrap._gcd_import(name[level:], package, level)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 tests\jobstore\test_f5_impl.py:12: in <module>

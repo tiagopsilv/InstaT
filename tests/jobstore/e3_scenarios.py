@@ -1,3 +1,4 @@
+# ruff: noqa: E702  (cenários portados literalmente de test_v137.py)
 """Cenários [E3] portados de docs/design-validation/v13.7/test_v137.py (F5).
 
 Portados SEM mudar expectativas. Mudanças de harness, todas registradas em

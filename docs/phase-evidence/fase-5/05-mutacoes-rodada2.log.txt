@@ -1,0 +1,8 @@
+DETECTADA              M6 liberação da conta sem sessão validada
+    nfo ===========================
+FAILED tests/jobstore/test_e3.py::test_e3_scenario[L04] - AssertionError: L04...
+FAILED tests/jobstore/test_f5_impl.py::test_rejections_hold_in_100_percent_of_attempts
+
+DETECTADA (travou)     M8 backup permitido com transação aberta
+    teste não terminou em 180 s: o travamento do backup reapareceu
+--- detectadas: 2/2
