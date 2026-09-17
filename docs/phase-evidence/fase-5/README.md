@@ -265,3 +265,7 @@ Nenhum retorno público existente mudou.
 | [`05-progresso-sem-cursor.png`](05-progresso-sem-cursor.png) | sequências **sintéticas**: `no_end_evidence` → parcial; contador exato → `k_rounds_and_exact_counter` → `complete`; tela repetida → `screen_stuck`; lacuna + marcador → parcial `continuity_gap` |
 | [`06-selecao-e-historico.png`](06-selecao-e-historico.png) | seleção run 2 `complete` (ana, carla); última tentativa run 3 parcial `technical_error`, datas separadas; histórico ana, bruno, carla com rótulo; sem campo de remoção |
 | [`07-backup-online.png`](07-backup-online.png) | 51,7 MB; passo único 0,23 s; 98 escritas durante cópia e verificação; 0 de 159 não `trusted`; heartbeat 34/0; verificação pela cópia ok (38 páginas); origem terminou com 159; `nao_drenado`; drenada `digest_equal = True`; `BackupMisuse` |
+
+## Aceite de CI
+
+Run `35215371605` no PR #10 (somente CI, fechado sem merge), em Linux: lint-and-type ✅, test 3.12 ✅, test 3.13 ✅, build ✅. O E1 com processos também rodou no CI; a intermitência de `disk I/O error` foi observada só no Windows local.
