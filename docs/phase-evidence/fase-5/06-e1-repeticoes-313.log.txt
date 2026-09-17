@@ -1,0 +1,2 @@
+E1 3.13 após sonda: 12 passed, 0 failed de 12
+E1 3.12: 6/6 passed

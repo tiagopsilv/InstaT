@@ -1,0 +1,27 @@
+{
+  "stats": {
+    "crashes": 100,
+    "reprocessed": 40,
+    "duplicates": 20,
+    "committed": 0,
+    "recovered_from_spool": 20
+  },
+  "integrity": {
+    "dup_trusted": 0,
+    "next_pos": 20,
+    "trusted_pages": 20,
+    "observations": 1000,
+    "distinct_usernames": 1000,
+    "member_rows": 1000,
+    "distinct_member_pk": 1000,
+    "integrity": "ok"
+  },
+  "run_result": {
+    "status": "complete",
+    "progress_state": "end_confirmed",
+    "end_evidence": "end_marker",
+    "collected": 1000,
+    "suspect_open": 0,
+    "next_pos": 20
+  }
+}

@@ -1,0 +1,488 @@
+{
+  "antes_crash": {
+    "falha": "queda simulada após o commit da posição 3, antes do ack do spool",
+    "stats_worker1": {
+      "committed": 3,
+      "duplicates": 0,
+      "reprocessed": 0,
+      "recovered_from_spool": 0,
+      "discarded_obsolete": 0,
+      "suspect": 0
+    },
+    "pages": [
+      {
+        "pos": 0,
+        "attempt": "11d080ae",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 1,
+        "attempt": "52073e91",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 2,
+        "attempt": "319a9608",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 3,
+        "attempt": "167bc459",
+        "quality": "trusted",
+        "n": 50
+      }
+    ],
+    "next_pos": 4,
+    "spool_pendente": [
+      {
+        "attempt": "167bc459",
+        "pos": 3,
+        "com_resposta": true
+      }
+    ]
+  },
+  "retomada": {
+    "resultado_worker2": {
+      "stop": "end_confirmed",
+      "committed": 2,
+      "duplicates": 1,
+      "reprocessed": 0,
+      "recovered_from_spool": 1,
+      "discarded_obsolete": 0,
+      "suspect": 0
+    },
+    "pages": [
+      {
+        "pos": 0,
+        "attempt": "11d080ae",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 1,
+        "attempt": "52073e91",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 2,
+        "attempt": "319a9608",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 3,
+        "attempt": "167bc459",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 4,
+        "attempt": "f06e1904",
+        "quality": "trusted",
+        "n": 50
+      },
+      {
+        "pos": 5,
+        "attempt": "b49351ab",
+        "quality": "trusted",
+        "n": 50
+      }
+    ],
+    "next_pos": 6,
+    "spool_pendente": [],
+    "run_result": {
+      "status": "complete",
+      "progress_state": "end_confirmed",
+      "end_evidence": "end_marker",
+      "collected": 300,
+      "suspect_open": 0,
+      "next_pos": 6
+    },
+    "membros_iguais_ao_conjunto": true
+  },
+  "integridade_crash": {
+    "ok": true,
+    "integrity": "ok",
+    "fk_violations": 0,
+    "dup_trusted": 0,
+    "next_pos_mismatch": 0,
+    "marker": {
+      "max_run_id": 1,
+      "max_page_id": 6,
+      "max_committed_at": 1789639159.984601,
+      "pages": 6
+    },
+    "compared_with_live_origin": false
+  },
+  "heartbeat": {
+    "conta_a": {
+      "renovacoes": 3,
+      "status_final": "account_restricted",
+      "falhas": 0
+    },
+    "conta_b": {
+      "renovacoes": 2,
+      "status_final": "lease_lost",
+      "falhas": 0
+    },
+    "can_send_antes_da_revogacao": [
+      true,
+      "ok"
+    ],
+    "can_send_logo_apos_revogacao": [
+      false,
+      "account_restricted"
+    ],
+    "can_send_depois_de_expirar": [
+      false,
+      "lease_lost"
+    ],
+    "reivindicacao_conta_revogada": "rejected:solicitante_sem_concessao",
+    "liberacao_sem_sessao_validada": "rejected:sessao_nao_validada"
+  },
+  "scan": {
+    "sem_evidencia_de_fim": {
+      "telas": [
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "bia,caio",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "caio,dani",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "dani,eva",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "eva,ana",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 1,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 2,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "bia,caio",
+          "resultado": "committed:trusted",
+          "estado": "end_unknown",
+          "evidencia": "no_end_evidence",
+          "sem_novos": 3,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        }
+      ],
+      "status": "partial",
+      "motivos": [
+        "no_end_evidence"
+      ]
+    },
+    "contador_exato_compativel": {
+      "telas": [
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "bia,caio",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "caio,dani",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "dani,ana",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 1,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 2,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "bia,caio",
+          "resultado": "committed:trusted",
+          "estado": "end_confirmed",
+          "evidencia": "k_rounds_and_exact_counter",
+          "sem_novos": 3,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        }
+      ],
+      "status": "complete",
+      "motivos": []
+    },
+    "tela_repetida": {
+      "telas": [
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 1,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 2,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "end_unknown",
+          "evidencia": "screen_stuck",
+          "sem_novos": 0,
+          "repetidas": 3,
+          "lacunas": 0,
+          "segmento": 0
+        }
+      ],
+      "status": "partial",
+      "motivos": [
+        "screen_stuck"
+      ]
+    },
+    "lacuna_de_continuidade": {
+      "telas": [
+        {
+          "tela": "ana,bia",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 0,
+          "segmento": 0
+        },
+        {
+          "tela": "caio,dani",
+          "resultado": "committed:trusted",
+          "estado": "in_progress",
+          "evidencia": null,
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 1,
+          "segmento": 0
+        },
+        {
+          "tela": "dani,eva",
+          "resultado": "committed:trusted",
+          "estado": "end_confirmed",
+          "evidencia": "end_marker",
+          "sem_novos": 0,
+          "repetidas": 0,
+          "lacunas": 1,
+          "segmento": 0
+        }
+      ],
+      "status": "partial",
+      "motivos": [
+        "continuity_gap"
+      ]
+    }
+  },
+  "job_view": {
+    "execucoes": {
+      "1": "ana,bruno (fim confirmado)",
+      "2": "ana,carla (fim confirmado)",
+      "3": "ana (falha técnica, parcial)"
+    },
+    "view": {
+      "job_id": "JV",
+      "selected_run_id": 2,
+      "selected_run_status": "complete",
+      "selected_run_reasons": [],
+      "selected_run_at": 1201.0,
+      "selected_members": [
+        "ana",
+        "carla"
+      ],
+      "selected_suspect_open": 0,
+      "last_attempt_run_id": 3,
+      "last_attempt_status": "partial",
+      "last_attempt_state": "in_progress",
+      "last_attempt_stop_reason": "technical_error",
+      "last_attempt_at": 1402.0,
+      "history_observed": {
+        "ana": {
+          "first_trusted_at": 1001.0,
+          "last_trusted_at": 1401.0
+        },
+        "bruno": {
+          "first_trusted_at": 1001.0,
+          "last_trusted_at": 1001.0
+        },
+        "carla": {
+          "first_trusted_at": 1201.0,
+          "last_trusted_at": 1201.0
+        }
+      },
+      "history_label": "histórico observado: não é lista atual nem prova de completude",
+      "suspect_total": 0
+    },
+    "run_results": {
+      "1": {
+        "status": "complete",
+        "members": [
+          "ana",
+          "bruno"
+        ],
+        "reasons": []
+      },
+      "2": {
+        "status": "complete",
+        "members": [
+          "ana",
+          "carla"
+        ],
+        "reasons": []
+      },
+      "3": {
+        "status": "partial",
+        "members": [
+          "ana"
+        ],
+        "reasons": [
+          "in_progress"
+        ]
+      }
+    }
+  },
+  "backup": {
+    "tamanho_banco_mb": 51.7,
+    "online": {
+      "status": "ok",
+      "elapsed": 0.23399999999674037,
+      "steps": 1
+    },
+    "verificacao": {
+      "ok": true,
+      "integrity": "ok",
+      "fk_violations": 0,
+      "dup_trusted": 0,
+      "next_pos_mismatch": 0,
+      "marker": {
+        "max_run_id": 1,
+        "max_page_id": 38,
+        "max_committed_at": 1789639165.4839907,
+        "pages": 38
+      },
+      "compared_with_live_origin": false
+    },
+    "escritas_durante_copia": 98,
+    "escritas_total": 159,
+    "escritas_nao_trusted": 0,
+    "heartbeat": {
+      "renovacoes": 34,
+      "falhas": 0,
+      "status": "renewed"
+    },
+    "paginas_origem_ao_final": 159,
+    "manutencao_nao_drenada": {
+      "status": "rejected:nao_drenado",
+      "live_leases": 1,
+      "open_runs": 1
+    },
+    "manutencao_drenada": {
+      "status": "ok",
+      "digest_equal": true,
+      "compared_with_origin_in_maintenance_window": true
+    },
+    "backup_com_transacao_aberta": "BackupMisuse"
+  }
+}

@@ -1,0 +1,9 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_e1_eight_processes_one_hundred_kills_real_lock_waits __________
+tests\jobstore\test_f5_faults.py:262: in test_e1_eight_processes_one_hundred_kills_real_lock_waits
+    assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   sqlite3.OperationalError: disk I/O error
+=========================== short test summary info ===========================
+FAILED tests/jobstore/test_f5_faults.py::test_e1_eight_processes_one_hundred_kills_real_lock_waits
