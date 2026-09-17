@@ -1,0 +1,4 @@
+timeline   resultado='2 perfil(is) (parcial)' motivo='rate_limited' logins=['conta_teste_fake'] requisicoes=[503, 200, 429] uso={'attempts': 3, 'bytes': 99, 'elapsed_s': 2.0, 'state': 'paused'}
+orcamento  resultado='60 perfil(is) (parcial)' motivo='budget:bytes' logins=['conta_teste_fake'] requisicoes=[200, 200, 200] uso={'attempts': 2, 'bytes': 1596, 'elapsed_s': 0.0, 'state': 'active'}
+challenge  resultado='1 perfil(is) (parcial)' motivo='challenge' logins=['conta_a_fake'] requisicoes=[200, 400] uso={'attempts': 2, 'bytes': 102, 'elapsed_s': 0.0, 'state': 'needs_attention'}
+proxy      resultado='ExtractionStoppedError: 0 perfil' motivo='proxy:TRAFFIC_EXHAUSTED' logins=['conta_a_fake'] requisicoes=[407] uso={'attempts': 2, 'bytes': 17, 'elapsed_s': 0.0, 'state': 'active'}

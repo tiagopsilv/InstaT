@@ -44,6 +44,7 @@ try:
     from instat.engines.selenium_engine import SeleniumEngine
     from instat.exceptions import LoginError
     from instat.exporters import BaseExporter, CSVExporter, JSONExporter, SQLiteExporter
+    from instat.governor import GovernorStop
     from instat.login import InstaLogin
     from instat.proxy import ProxyPool
     from instat.session_pool import SessionPool
@@ -54,6 +55,7 @@ except ImportError:
     from engines.selenium_engine import SeleniumEngine
     from exceptions import LoginError
     from exporters import BaseExporter, CSVExporter, JSONExporter, SQLiteExporter
+    from governor import GovernorStop  # type: ignore
     from login import InstaLogin
     from proxy import ProxyPool
     from session_pool import SessionPool
@@ -629,6 +631,15 @@ class InstaExtractor:
             before = len(accumulated)
             accumulated.update(iteration)
             after = len(accumulated)
+            stop = self._terminal_stop()
+            if stop is not None:
+                # Governador parou (429, proxy, challenge, restrição,
+                # orçamento, cancelamento): repetir só insistiria.
+                logger.warning(
+                    f"until_complete: governor stop '{stop.reason}' — "
+                    f"no retry ({after} collected)"
+                )
+                return sorted(accumulated)
             # Update rate-limit streak. Engines that did NOT rate-limit
             # this iteration reset their streak. Newly-offending engines
             # get incremented. At STREAK_BEFORE_EXCLUDE, exclude.
@@ -746,6 +757,13 @@ class InstaExtractor:
             out.append({'username': u, 'password': p})
         return out
 
+    def _terminal_stop(self):
+        """GovernorStop terminal da última extração, ou None."""
+        stop = getattr(getattr(self, '_engine_manager', None), 'last_stop', None)
+        if isinstance(stop, GovernorStop) and stop.is_terminal:
+            return stop
+        return None
+
     def _extract_with_rotation(
         self, profile_id: str, list_type: str,
         fallback_accounts: Optional[List[Dict[str, str]]],
@@ -788,6 +806,16 @@ class InstaExtractor:
             return target_count is not None and len(accumulated) >= target_count
 
         if _target_hit() or not fallbacks:
+            return sorted(accumulated)
+
+        stop = self._terminal_stop()
+        if stop is not None:
+            # §5.6: nenhuma troca de conta para insistir numa restrição,
+            # challenge, 429 ou falha de proxy.
+            logger.warning(
+                f"rotation: governor stop '{stop.reason}' on primary account — "
+                "not rotating to fallback accounts"
+            )
             return sorted(accumulated)
 
         # Phase 2: rotate through fallback accounts. Each one gets its

@@ -16,14 +16,32 @@ from loguru import logger
 try:
     from instat.constants import human_delay
     from instat.engines.base import BaseEngine
-    from instat.exceptions import BlockedError, ProfileNotFoundError, RateLimitError
+    from instat.exceptions import (
+        BlockedError,
+        ChallengeError,
+        ProfileNotFoundError,
+        ProxyError,
+        RateLimitError,
+        RestrictedError,
+        TransientError,
+    )
+    from instat.governor import Signal, classify_http
     from instat.post_metrics import PostMetrics, parse_post_from_api
     from instat.profile_summary import ProfileSummary
     from instat.session_cache import SessionCache
 except ImportError:
     from constants import human_delay
     from engines.base import BaseEngine
-    from exceptions import BlockedError, ProfileNotFoundError, RateLimitError
+    from exceptions import (  # type: ignore
+        BlockedError,
+        ChallengeError,
+        ProfileNotFoundError,
+        ProxyError,
+        RateLimitError,
+        RestrictedError,
+        TransientError,
+    )
+    from governor import Signal, classify_http  # type: ignore
     from post_metrics import PostMetrics, parse_post_from_api  # type: ignore
     from profile_summary import ProfileSummary  # type: ignore
     from session_cache import SessionCache
@@ -270,16 +288,11 @@ class HttpxEngine(BaseEngine):
                 params={'username': username}
             )
         except Exception as e:
-            raise BlockedError(f'{self.name}: profile info request failed') from e
+            raise self._request_error('profile info request failed', e) from e
 
         if r.status_code == 404:
             raise ProfileNotFoundError(f'{self.name}: user {username} not found')
-        if r.status_code == 429:
-            raise RateLimitError(f'{self.name}: rate limited on user resolve')
-        if r.status_code == 400:
-            raise BlockedError(f'{self.name}: blocked on user resolve')
-        if r.status_code != 200:
-            raise BlockedError(f'{self.name}: unexpected status {r.status_code}')
+        self._raise_for_status(r, 'user resolve')
 
         try:
             data = r.json()
@@ -291,6 +304,59 @@ class HttpxEngine(BaseEngine):
             raise
         except Exception as e:
             raise BlockedError(f'{self.name}: malformed profile info response') from e
+
+    # ------------------------------------------------------ classificação
+    bytes_sink: Optional[Callable[[int], None]] = None
+    # Chamado antes de cada página; pode levantar GovernorStop (budget:*).
+    budget_check: Optional[Callable[[], None]] = None
+
+    _TRANSIENT_EXC_NAMES = frozenset({
+        'TimeoutException', 'ConnectTimeout', 'ReadTimeout', 'WriteTimeout',
+        'PoolTimeout', 'ConnectError', 'ReadError', 'WriteError',
+        'RemoteProtocolError', 'NetworkError',
+    })
+
+    def _request_error(self, what: str, exc: BaseException) -> BlockedError:
+        """Exceção de transporte → ProxyError / TransientError / BlockedError."""
+        name = type(exc).__name__
+        msg = f'{self.name}: {what}: {exc}'
+        if name == 'ProxyError':
+            c = classify_http(407, {}, str(exc))
+            return ProxyError(msg, cause=c.cause if c else 'unknown')
+        if isinstance(exc, (TimeoutError, ConnectionError)) or name in self._TRANSIENT_EXC_NAMES:
+            return TransientError(msg)
+        return BlockedError(msg)
+
+    def _raise_for_status(self, r, what: str) -> None:
+        """Classifica a resposta (roadmap §5.6) e informa bytes ao governador."""
+        if self.bytes_sink is not None:
+            try:
+                size = r.headers.get('Content-Length') if r.headers else None
+                n = int(size) if size is not None else len(r.content or b'')
+            except Exception as e:
+                logger.debug(f'{self.name}: bytes accounting failed: {e}')
+            else:
+                self.bytes_sink(n)
+        if r.status_code == 200:
+            return
+        try:
+            body = r.text or ''
+        except Exception:
+            body = ''
+        c = classify_http(r.status_code, r.headers or {}, body,
+                          reason_phrase=getattr(r, 'reason_phrase', '') or '')
+        msg = f'{self.name}: {what}: status {r.status_code}'
+        if c is None or c.signal is Signal.TECHNICAL:
+            raise BlockedError(f'{msg} (unexpected)')
+        if c.signal is Signal.PROXY:
+            raise ProxyError(f'{msg} proxy {c.cause}', cause=c.cause or 'unknown')
+        if c.signal is Signal.RATE_LIMITED:
+            raise RateLimitError(f'{msg} rate limited', retry_after=c.retry_after)
+        if c.signal is Signal.TRANSIENT:
+            raise TransientError(msg, status=r.status_code, retry_after=c.retry_after)
+        if c.signal is Signal.CHALLENGE:
+            raise ChallengeError(f'{msg} challenge')
+        raise RestrictedError(f'{msg} restricted ({c.cause})')
 
     def extract(self, profile_id: str, list_type: str,
                 existing_profiles: Optional[Set[str]] = None,
@@ -331,6 +397,8 @@ class HttpxEngine(BaseEngine):
             if should_stop and should_stop():
                 logger.info(f'{self.name}: should_stop signal received')
                 break
+            if self.budget_check is not None:
+                self.budget_check()
 
             params = {'count': 50}
             if max_id:
@@ -339,14 +407,9 @@ class HttpxEngine(BaseEngine):
             try:
                 r = self._client.get(endpoint, params=params)
             except Exception as e:
-                raise BlockedError(f'{self.name}: request failed: {e}') from e
+                raise self._request_error('request failed', e) from e
 
-            if r.status_code == 429:
-                raise RateLimitError(f'{self.name}: rate limited')
-            if r.status_code in (400, 403):
-                raise BlockedError(f'{self.name}: blocked at status {r.status_code}')
-            if r.status_code != 200:
-                raise BlockedError(f'{self.name}: unexpected status {r.status_code}')
+            self._raise_for_status(r, 'followers page')
 
             try:
                 data = r.json()
@@ -447,9 +510,9 @@ class HttpxEngine(BaseEngine):
             try:
                 r = self._client.get(endpoint, params=params)
             except Exception as e:
-                raise BlockedError(f'{self.name}: feed request failed: {e}') from e
-            if r.status_code == 429:
-                raise RateLimitError(f'{self.name}: rate limited on feed')
+                raise self._request_error('feed request failed', e) from e
+            if r.status_code != 404:
+                self._raise_for_status(r, 'feed')
             if r.status_code == 404:
                 raise ProfileNotFoundError(
                     f'{self.name}: user {profile_id} not found'

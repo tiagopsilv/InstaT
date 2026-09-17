@@ -513,3 +513,54 @@ def test_wait_for_new_profiles_stale_loop_is_bounded():
             patch("instat.utils.human_delay"):
         Utils.wait_for_new_profiles(driver, MagicMock(), "span", set())
     assert len(calls) <= 10
+
+
+# ------------------------------------------------------------ adicionados na execução (passo 5)
+# Não fazem parte do vermelho de 2e9f91c: cobrem o ajuste feito ao gerar os
+# prints (orçamento checado entre páginas, sem descartar página já paga).
+def test_check_budget_mid_attempt():
+    g = gov(max_bytes=100)
+    g.begin(KEY)
+    g.record_bytes(KEY, 150)
+    with pytest.raises(GovernorStop) as e:
+        g.check_budget(KEY)
+    assert e.value.reason == "budget:bytes"
+
+
+def test_httpx_byte_budget_stops_between_pages_keeping_paid_page(cwd):
+    pytest.importorskip("httpx")
+    from instat.engines.httpx_engine import HttpxEngine
+
+    def page(names, nxt):
+        body = '{"users": [%s], "next_max_id": %s}' % (
+            ", ".join('{"username": "%s"}' % n for n in names), f'"{nxt}"' if nxt else "null")
+        r = _resp(200, {"Content-Length": "600"}, text=body)
+        r.json.side_effect = None
+        r.json.return_value = {"users": [{"username": n} for n in names], "next_max_id": nxt}
+        return r
+
+    eng = HttpxEngine()
+    eng._client = MagicMock(get=MagicMock(side_effect=[page(["a"], "c1"), page(["b"], "c2"),
+                                                       page(["c"], None)]))
+    mgr = em.EngineManager([eng], governor=gov(max_bytes=1000))
+    with patch.object(eng, "_resolve_user_id", return_value="1"), \
+            patch("instat.engines.httpx_engine.human_delay"), \
+            patch.object(eng, "login"):
+        out = mgr.extract("alvo", "followers")
+    assert sorted(out) == ["a", "b"]
+    assert eng._client.get.call_count == 2
+    assert mgr.last_stop.reason == "budget:bytes"
+
+
+def test_retry_after_above_cap_pauses_key_until_retry_after():
+    """Critério 4: acima do cap vira pausa (desvio encontrado no passo 6)."""
+    g = gov(max_transient_retries=3, backoff_cap_s=60)
+    g.begin(KEY)
+    with pytest.raises(GovernorStop):
+        g.call(KEY, failing(TransientError("503", retry_after=600), []))
+    assert g.state(KEY) is KeyState.PAUSED
+    g.clock.advance(599)
+    with pytest.raises(GovernorStop):
+        g.before_attempt(KEY)
+    g.clock.advance(2)
+    g.before_attempt(KEY)

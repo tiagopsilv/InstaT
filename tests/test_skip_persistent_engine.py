@@ -78,13 +78,16 @@ class TestEngineManagerExcludeEngines(unittest.TestCase):
                 p, lt, checkpoint_dir=tmp
             )
             try:
-                mgr.extract('t', 'followers', rate_limit_sink=sink)
+                # F2 (§5.6): a 429 stops the cascade — the next engine is not
+                # tried with the same account. Previously selenium took over.
+                with self.assertRaises(em.AllEnginesBlockedError):
+                    mgr.extract('t', 'followers', rate_limit_sink=sink)
             finally:
                 em.ExtractionCheckpoint = original_cls
 
         self.assertIn('httpx', sink)
-        # selenium DID succeed, no rate limit
         self.assertNotIn('selenium', sink)
+        eng_a.extract.assert_not_called()
 
 
 class TestUntilCompleteExcludesAfterStreak(unittest.TestCase):
