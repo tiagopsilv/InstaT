@@ -151,3 +151,20 @@ Relatório renderizado a partir de execuções reais do código com adapters fak
 | [`01-contrato-legado.png`](01-contrato-legado.png) | engine sem `_driver` e legado com `_driver`: mesmos user, full_name, 1894/1892/123 e pic; `privado`/`verificado` None × False (nota explica); `hasattr = False`; delegação `['target']`; followers 3 e following 2 |
 | [`02-perfil-sem-driver.png`](02-perfil-sem-driver.png) | httpx com resposta simulada: Alvo da Silva, 1894/1892/123, `False`/`True`, pic HD; bio `'bio\nlinha 2'`; requisição a `web_profile_info`; cascata legada → capaz (Nome Capaz 42/7/3, 1 chamada); challenge → `ExtractionStoppedError reason=challenge`, 0 chamadas à 2ª |
 | [`03-capacidades.png`](03-capacidades.png) | selenium: extract/profile_info/total_count; playwright-chromium: extract/total_count; httpx: + recent_posts; android_ui e mobile_api: vazio; subclasse legada: extract/total_count; mensagens completas, sem cortes, citando capacidades e `pip install instat[httpx]` |
+
+## Aceite de CI
+
+Run `35217993911` no PR #12 (somente CI, fechado sem merge), em Linux:
+
+| Execução | lint-and-type | test 3.12 | test 3.13 | build |
+|---|---|---|---|---|
+| 1ª | ✅ | ✅ | ❌ | pulado |
+| reexecução dos jobs que falharam | ✅ | ✅ | ✅ | ✅ |
+
+**A falha da 1ª execução não é código da F3.** Foi o cenário **B02 da F5** (`tests/jobstore/e3_scenarios.py`, backup incremental com heartbeat e escritor):
+
+- **Medido:** pior latência do heartbeat = 0,529 s, acima do limite do cenário (`< 0,5 s`); status `timeout` correto, 0 falhas de heartbeat, 16 renovações, 175 escritas.
+- **Reexecução:** passou.
+- **Situação: intermitência não investigada.** Não se sabe se a latência veio de carga do runner compartilhado ou de contenção real entre heartbeat e escritor. O limite **não foi alterado**, porque isso mudaria a expectativa.
+- **Pendência:** medir a distribuição da latência do heartbeat no B02 (várias repetições, local e CI) antes de decidir.
+

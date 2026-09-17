@@ -4,7 +4,7 @@ ____________ ERROR collecting tests/test_f3_profile_capability.py _____________
 ImportError while importing test module 'C:\Projetos\InstaT-wt-f3\tests\test_f3_profile_capability.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
-C:\Users\tiago\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
     return _bootstrap._gcd_import(name[level:], package, level)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 tests\test_f3_profile_capability.py:12: in <module>
@@ -14,7 +14,7 @@ _____________ ERROR collecting tests/test_public_api_contract.py ______________
 ImportError while importing test module 'C:\Projetos\InstaT-wt-f3\tests\test_public_api_contract.py'.
 Hint: make sure your test modules/packages have valid Python names.
 Traceback:
-C:\Users\tiago\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+<home>\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
     return _bootstrap._gcd_import(name[level:], package, level)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 tests\test_public_api_contract.py:136: in <module>
